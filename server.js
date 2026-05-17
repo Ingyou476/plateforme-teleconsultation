@@ -105,27 +105,18 @@ app.post('/api/login', (req, res) => {
 io.on('connection', (socket) => {
     console.log('🟢 Nouveau client connecté:', socket.id);
     
-    // Stocker le userId associé à ce socket
-    socket.on('register-user', (userId) => {
-        socket.userId = userId;
-        socket.userName = null;
-        console.log(`👤 Utilisateur ${userId} associé au socket ${socket.id}`);
-    });
-    
-    // Enregistrer le nom de l'utilisateur
     socket.on('register-user-name', (data) => {
         socket.userId = data.userId;
         socket.userName = data.userName;
         socket.userRole = data.role;
-        console.log(`👤 ${data.userName} (${data.role}) connecté avec socket ${socket.id}`);
+        console.log(`👤 ${data.userName} (${data.role}) connecté`);
     });
     
-    // Patient demande un appel avec un médecin
+    // Patient demande un appel
     socket.on('call-doctor', (data) => {
         const { patientId, patientName, doctorId, doctorName } = data;
-        console.log(`📞 Appel demandé: ${patientName} (${patientId}) -> ${doctorName} (${doctorId})`);
+        console.log(`📞 Appel demandé: ${patientName} -> ${doctorName}`);
         
-        // Stocker l'appel
         const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         activeCalls.set(callId, {
             callId,
@@ -134,11 +125,9 @@ io.on('connection', (socket) => {
             doctorId,
             doctorName,
             patientSocketId: socket.id,
-            status: 'waiting',
-            createdAt: new Date()
+            status: 'waiting'
         });
         
-        // Diffuser la demande à tous les médecins (ou spécifique)
         socket.broadcast.emit('incoming-call', {
             callId,
             patientId,
@@ -148,7 +137,6 @@ io.on('connection', (socket) => {
             fromSocketId: socket.id
         });
         
-        // Confirmer au patient que la demande est envoyée
         socket.emit('call-requested', { callId, status: 'waiting' });
     });
     
@@ -162,9 +150,6 @@ io.on('connection', (socket) => {
             call.doctorSocketId = socket.id;
             call.doctorName = doctorName;
             
-            console.log(`✅ Appel accepté: ${call.patientName} par ${doctorName}`);
-            
-            // Informer le patient que le médecin a accepté
             io.to(call.patientSocketId).emit('call-accepted', {
                 callId,
                 doctorId,
@@ -172,98 +157,66 @@ io.on('connection', (socket) => {
                 doctorSocketId: socket.id
             });
             
-            // Informer le médecin qu'il peut procéder
             socket.emit('ready-for-webrtc', {
                 callId,
                 patientId: call.patientId,
                 patientName: call.patientName,
                 patientSocketId: call.patientSocketId
             });
-        } else {
-            socket.emit('call-error', { message: 'Appel plus disponible' });
         }
     });
     
-    // Médecin refuse l'appel
     socket.on('reject-call', (data) => {
         const { callId, patientSocketId } = data;
-        const call = activeCalls.get(callId);
-        
-        if (call) {
-            io.to(patientSocketId).emit('call-rejected', { message: 'Le médecin n\'est pas disponible' });
-            activeCalls.delete(callId);
-        }
+        io.to(patientSocketId).emit('call-rejected', { message: 'Le médecin n\'est pas disponible' });
+        activeCalls.delete(callId);
     });
     
-    // --- OFFRE WebRTC (SDP) ---
+    // WebRTC Signalisation
     socket.on('webrtc-offer', (data) => {
-        const { targetSocketId, offer } = data;
-        console.log(`📤 Offer de ${socket.id} vers ${targetSocketId}`);
-        io.to(targetSocketId).emit('webrtc-offer', {
-            offer,
+        io.to(data.targetSocketId).emit('webrtc-offer', {
+            offer: data.offer,
             fromSocketId: socket.id
         });
     });
     
-    // --- RÉPONSE WebRTC (SDP Answer) ---
     socket.on('webrtc-answer', (data) => {
-        const { targetSocketId, answer } = data;
-        console.log(`📥 Answer de ${socket.id} vers ${targetSocketId}`);
-        io.to(targetSocketId).emit('webrtc-answer', {
-            answer,
+        io.to(data.targetSocketId).emit('webrtc-answer', {
+            answer: data.answer,
             fromSocketId: socket.id
         });
     });
     
-    // --- CANDIDAT ICE (pour traverser NAT/firewall) ---
     socket.on('webrtc-ice-candidate', (data) => {
-        const { targetSocketId, candidate } = data;
-        console.log(`🧊 ICE candidate de ${socket.id} vers ${targetSocketId}`);
-        io.to(targetSocketId).emit('webrtc-ice-candidate', {
-            candidate,
+        io.to(data.targetSocketId).emit('webrtc-ice-candidate', {
+            candidate: data.candidate,
             fromSocketId: socket.id
         });
     });
     
-    // Fin d'appel
     socket.on('end-call', (data) => {
-        const { callId } = data;
-        const call = activeCalls.get(callId);
+        const call = activeCalls.get(data.callId);
         if (call) {
-            console.log(`📞 Fin d'appel: ${call.patientName} - ${call.doctorName}`);
-            if (call.patientSocketId) {
-                io.to(call.patientSocketId).emit('call-ended');
-            }
-            if (call.doctorSocketId) {
-                io.to(call.doctorSocketId).emit('call-ended');
-            }
-            activeCalls.delete(callId);
+            if (call.patientSocketId) io.to(call.patientSocketId).emit('call-ended');
+            if (call.doctorSocketId) io.to(call.doctorSocketId).emit('call-ended');
+            activeCalls.delete(data.callId);
         }
     });
     
-    // Envoi de données du capteur (télésurveillance)
     socket.on('sensor-data', (data) => {
-        const { targetSocketId, sensorType, value, unit, timestamp } = data;
-        io.to(targetSocketId).emit('sensor-data', {
-            sensorType,
-            value,
-            unit,
-            timestamp
+        io.to(data.targetSocketId).emit('sensor-data', {
+            sensorType: data.sensorType,
+            value: data.value,
+            unit: data.unit,
+            timestamp: data.timestamp,
+            fhirResource: data.fhirResource
         });
     });
     
     socket.on('disconnect', () => {
         console.log('🔴 Client déconnecté:', socket.id);
-        // Nettoyer les appels en attente ou actifs
         for (const [callId, call] of activeCalls.entries()) {
             if (call.patientSocketId === socket.id || call.doctorSocketId === socket.id) {
-                console.log(`🧹 Nettoyage appel ${callId}`);
-                if (call.patientSocketId && call.patientSocketId !== socket.id) {
-                    io.to(call.patientSocketId).emit('call-ended');
-                }
-                if (call.doctorSocketId && call.doctorSocketId !== socket.id) {
-                    io.to(call.doctorSocketId).emit('call-ended');
-                }
                 activeCalls.delete(callId);
             }
         }
@@ -274,7 +227,6 @@ io.on('connection', (socket) => {
 // DÉMARRAGE DU SERVEUR
 // ============================================
 
-// Fonction pour obtenir l'IP locale
 function getLocalIp() {
     const interfaces = os.networkInterfaces();
     for (const name of Object.keys(interfaces)) {
@@ -294,11 +246,5 @@ server.listen(port, '0.0.0.0', () => {
     console.log('========================================');
     console.log(`📍 Accès local : http://localhost:${port}`);
     console.log(`📍 Sur le réseau : http://${localIp}:${port}`);
-    console.log('========================================');
-    console.log('📋 Pour tester entre deux ordinateurs :');
-    console.log(`   1. Lancez ce serveur sur l\'ordinateur principal`);
-    console.log(`   2. Sur l\'autre ordinateur, ouvrez http://${localIp}:${port}`);
-    console.log(`   3. Connectez-vous (Patient sur un PC, Médecin sur l'autre)`);
-    console.log(`   4. Lancez la consultation !`);
     console.log('========================================\n');
 });
