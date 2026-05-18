@@ -154,7 +154,7 @@
 <body>
     <div class="container">
         <div class="nav">
-            <h1 style="color: white;">🏥 Ma Santé en Ligne</h1>
+            <h1 style="color: white;">🔒 Ma Santé en Ligne</h1>
             <div id="userInfo" class="user-info hidden"></div>
         </div>
         
@@ -215,16 +215,46 @@
     
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // Configuration ICE avec STUN + TURN
+        // ============================================
+        // CONFIGURATION ICE AVEC TURN/STUN
+        // Conforme au cahier des charges
+        // ============================================
+        const SERVER_IP = '192.168.23.129';
+        
         const configuration = {
             iceServers: [
+                // Serveurs STUN publics (fallback)
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
                 { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:stun4.l.google.com:19302' }
-            ]
+                { urls: 'stun:stun4.l.google.com:19302' },
+                
+                // Notre serveur STUN (sur la VM)
+                { urls: `stun:${SERVER_IP}:3478` },
+                
+                // Notre serveur TURN (obligatoire selon cahier des charges)
+                {
+                    urls: `turn:${SERVER_IP}:3478`,
+                    username: 'patient',
+                    credential: 'patient123'
+                },
+                {
+                    urls: `turn:${SERVER_IP}:3478`,
+                    username: 'medecin',
+                    credential: 'medecin123'
+                },
+                {
+                    urls: `turns:${SERVER_IP}:3478`,
+                    username: 'patient',
+                    credential: 'patient123'
+                }
+            ],
+            iceCandidatePoolSize: 10,
+            iceTransportPolicy: 'all'
         };
+        
+        console.log('🔧 Configuration ICE avec TURN/STUN:', configuration);
         
         let currentUser = null;
         let doctors = [];
@@ -308,9 +338,10 @@
         
         function initSocket() {
             if (socket) socket.disconnect();
-            socket = io();
+            socket = io({ transports: ['websocket', 'polling'] });
             
             socket.on('connect', () => {
+                console.log('🔒 Socket.IO connecté (WSS)');
                 socket.emit('register-user-name', {
                     userId: currentUser.id,
                     userName: currentUser.name,
@@ -325,7 +356,7 @@
             socket.on('call-accepted', async (data) => {
                 currentCallId = data.callId;
                 currentTargetSocketId = data.doctorSocketId;
-                showSuccess('Le médecin a accepté la consultation.');
+                showSuccess('✅ Le médecin a accepté la consultation.');
                 await startCall(true);
             });
             
@@ -352,14 +383,15 @@
                 showCallInterface(true);
                 await new Promise(resolve => setTimeout(resolve, 100));
                 
-                console.log('📸 Demande d\'accès à la caméra...');
+                console.log('📸 Demande accès caméra...');
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                console.log('✅ Accès à la caméra accordé !');
+                console.log('✅ Accès caméra accordé');
                 
                 const localVideo = document.getElementById('localVideo');
                 if (localVideo) localVideo.srcObject = localStream;
                 
                 peerConnection = new RTCPeerConnection(configuration);
+                console.log('🔧 PeerConnection créée avec configuration TURN/STUN');
                 
                 localStream.getTracks().forEach(track => {
                     peerConnection.addTrack(track, localStream);
@@ -374,10 +406,18 @@
                 
                 peerConnection.onicecandidate = (event) => {
                     if (event.candidate && currentTargetSocketId) {
+                        console.log('🧊 ICE Candidate:', event.candidate.type, event.candidate.candidate);
                         socket.emit('webrtc-ice-candidate', {
                             targetSocketId: currentTargetSocketId,
                             candidate: event.candidate
                         });
+                    }
+                };
+                
+                peerConnection.oniceconnectionstatechange = () => {
+                    console.log('🔌 ICE Connection State:', peerConnection.iceConnectionState);
+                    if (peerConnection.iceConnectionState === 'connected') {
+                        console.log('✅ Connexion ICE établie');
                     }
                 };
                 
@@ -396,11 +436,9 @@
             } catch (error) {
                 console.error('Erreur WebRTC:', error);
                 if (error.name === 'NotAllowedError') {
-                    alert('❌ Vous devez autoriser l\'accès à la caméra et au microphone.\n\nCliquez sur le cadenas 🔒 dans la barre d\'adresse et activez les permissions.');
-                } else if (error.name === 'NotFoundError') {
-                    alert('❌ Aucune caméra ou microphone trouvé sur votre ordinateur.');
+                    alert('❌ Vous devez autoriser la caméra.\n\nCliquez sur le cadenas 🔒 dans la barre d\'adresse.');
                 } else {
-                    alert('❌ Impossible d\'accéder à la caméra/microphone: ' + error.message);
+                    alert('❌ Erreur: ' + error.message);
                 }
                 endCall();
             }
@@ -543,7 +581,7 @@
                 valueQuantity: { value: heartRate, unit: "beats/minute", system: "http://unitsofmeasure.org", code: "/min" },
                 performer: [{ reference: `Practitioner/${currentTargetSocketId || 'system'}`, display: "Système de télésurveillance" }],
                 device: { display: "Simulateur de capteur médical" },
-                note: [{ text: "Mesure simulée à des fins de démonstration" }]
+                note: [{ text: "Mesure simulée" }]
             };
         }
         
@@ -601,7 +639,7 @@
         };
         
         window.requestCall = function() {
-            if (!selectedDoctor) { alert('Veuillez d\'abord sélectionner un médecin'); return; }
+            if (!selectedDoctor) { alert('Veuillez sélectionner un médecin'); return; }
             if (!socket) { alert('Problème de connexion'); return; }
             socket.emit('call-doctor', {
                 patientId: currentUser.id,
@@ -609,7 +647,7 @@
                 doctorId: selectedDoctor.id,
                 doctorName: selectedDoctor.name
             });
-            showSuccess('📞 Demande de consultation envoyée. En attente de réponse...');
+            showSuccess('📞 Demande envoyée...');
         };
         
         function loadDashboardContent() {
@@ -654,9 +692,9 @@
                 container.innerHTML = `
                     <h2>👨‍⚕️ Bonjour Dr. ${currentUser.name}</h2>
                     <h3>📞 État de la consultation</h3>
-                    <div id="requestsList" style="padding: 20px; text-align: center; background: #f8f9fa; border-radius: 10px;">
-                        <p>🟢 Vous êtes connecté et disponible</p>
-                        <p style="font-size: 14px; color: #888;">Les consultations arriveront ici automatiquement</p>
+                    <div style="padding: 20px; text-align: center; background: #f8f9fa; border-radius: 10px;">
+                        <p>🟢 Connecté et disponible</p>
+                        <p style="font-size: 14px; color: #888;">Les consultations arriveront ici</p>
                     </div>
                     <div id="consultationArea" style="margin-top: 30px;"></div>
                 `;
@@ -673,7 +711,7 @@
                 dashboard.style.display = 'block';
                 userInfo.classList.remove('hidden');
                 userInfo.innerHTML = `
-                    <span>👋 ${currentUser.name}</span>
+                    <span>🔒 ${currentUser.name}</span>
                     <span class="badge ${currentUser.role === 'patient' ? 'badge-patient' : 'badge-medecin'}">
                         ${currentUser.role === 'patient' ? 'Patient' : 'Médecin'}
                     </span>
