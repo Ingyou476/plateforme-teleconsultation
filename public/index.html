@@ -201,8 +201,7 @@
     let activeCallId = null, targetSocketId = null;
     let sensorInterval = null;
     let currentSelectedDoctorId = null;
-    let currentSelectedDate = new Date().toISOString().slice(0,10);
-    let availableSlots = [];
+    let currentSelectedDate = null;
 
     // Helper UI
     function showMsg(divId, msg, isError = true) {
@@ -418,7 +417,7 @@
             if (date) {
                 await fetch(`/api/doctors/${doctorId}/exceptions`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ date, allDay: true })
+                    body: JSON.stringify({ date })
                 });
                 alert("Indisponibilité ajoutée");
             }
@@ -517,9 +516,10 @@
             calendarDiv.innerHTML = html;
             document.querySelectorAll('.calendar-day').forEach(day => {
                 day.onclick = () => {
-                    selectedDate = new Date(year, month, parseInt(day.innerText));
+                    const dateStr = day.dataset.date;
+                    selectedDate = new Date(dateStr);
                     buildCalendar(year, month);
-                    loadSlotsForDate(selectedDate);
+                    loadSlotsForDate(dateStr);
                 };
             });
             document.getElementById('prevMonth').onclick = () => {
@@ -535,36 +535,34 @@
                 buildCalendar(newYear, newMonth);
             };
             if (selectedDate.getMonth() === month && selectedDate.getFullYear() === year) {
-                loadSlotsForDate(selectedDate);
+                loadSlotsForDate(selectedDate.toISOString().slice(0,10));
             }
         }
         buildCalendar(currentYear, currentMonth);
     }
 
-    async function loadSlotsForDate(dateObj) {
-        const dateStr = dateObj.toISOString().slice(0,10);
+    async function loadSlotsForDate(dateStr) {
         const res = await fetch(`/api/doctors/${currentSelectedDoctorId}/slots?date=${dateStr}`);
         const slots = await res.json();
-        availableSlots = slots;
         const slotsDiv = document.getElementById('slotsView');
         if (!slotsDiv) return;
         if (slots.length === 0) {
             slotsDiv.innerHTML = '<p>Aucun créneau disponible ce jour.</p>';
             return;
         }
-        slotsDiv.innerHTML = `<h4>Créneaux disponibles</h4>` + slots.map(s => `
+        slotsDiv.innerHTML = `<h4>Créneaux disponibles le ${new Date(dateStr).toLocaleDateString()}</h4>` + slots.map(s => `
             <div class="slot">
-                <span>🕒 ${new Date(s.start).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                <span>🕒 ${s.startTimeFormatted}</span>
                 <button onclick="bookSlot('${s.start}','${s.end}')">Réserver</button>
             </div>
         `).join('');
     }
 
     window.bookSlot = async (start, end) => {
-        const doctor = await fetch(`/api/doctors/${currentSelectedDoctorId}`).then(r => r.json()); // on a la liste, on peut récupérer le nom
-        const allDocs = await fetch('/api/doctors').then(r => r.json());
-        const doctorObj = allDocs.find(d => d.id === currentSelectedDoctorId);
-        if (!doctorObj) return;
+        // Récupérer le nom du médecin
+        const allDoctors = await fetch('/api/doctors').then(r => r.json());
+        const doctor = allDoctors.find(d => d.id === currentSelectedDoctorId);
+        if (!doctor) return;
         const res = await fetch('/api/appointments', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -572,7 +570,7 @@
                 patientId: currentUser.id,
                 patientName: currentUser.name,
                 doctorId: currentSelectedDoctorId,
-                doctorName: doctorObj.name,
+                doctorName: doctor.name,
                 start, end
             })
         });
@@ -581,7 +579,7 @@
             alert("Rendez-vous pris !");
             loadPatientDashboard();
         } else {
-            alert(data.message || "Erreur");
+            alert(data.message || "Erreur lors de la réservation");
         }
     };
 
