@@ -1,7 +1,7 @@
 {
   "name": "plateforme-teleconsultation",
   "version": "1.0.0",
-  "description": "Plateforme de téléconsultation avec WebRTC, STUN et TURN",
+  "description": "",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

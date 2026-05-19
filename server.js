@@ -6,208 +6,255 @@ const socketIo = require('socket.io');
 const os = require('os');
 
 const app = express();
-const port = 3443;
+const PORT = 3443;
 
-// ============================================
-// CERTIFICATS SSL
-// ============================================
+// Certificats SSL
 const SSL_KEY_PATH = '/home/iut/certs/key.pem';
 const SSL_CERT_PATH = '/home/iut/certs/cert.pem';
+const credentials = {
+    key: fs.readFileSync(SSL_KEY_PATH, 'utf8'),
+    cert: fs.readFileSync(SSL_CERT_PATH, 'utf8')
+};
 
-let privateKey, certificate;
-
-try {
-    privateKey = fs.readFileSync(SSL_KEY_PATH, 'utf8');
-    certificate = fs.readFileSync(SSL_CERT_PATH, 'utf8');
-    console.log('✅ Certificats SSL chargés');
-} catch (error) {
-    console.error('❌ Certificats SSL non trouvés !');
-    console.error('Générez-les avec:');
-    console.log('   mkdir -p ~/certs && cd ~/certs');
-    console.log('   openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=192.168.23.129"');
-    process.exit(1);
-}
-
-const credentials = { key: privateKey, cert: certificate };
 const server = https.createServer(credentials, app);
-const io = socketIo(server, {
-    cors: { origin: "*", methods: ["GET", "POST"] },
-    transports: ['websocket', 'polling']
-});
-
-// ============================================
-// MIDDLEWARE DE SÉCURITÉ
-// ============================================
-app.use((req, res, next) => {
-    // Headers de sécurité
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self)');
-    next();
-});
+const io = socketIo(server, { cors: { origin: "*" }, transports: ['websocket', 'polling'] });
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================
-// BASE DE DONNÉES
+// BASES DE DONNÉES (mémoire)
 // ============================================
 
-const users = [];
+const users = [];           // tous les utilisateurs
+const doctors = [];         // infos spécifiques médecins (avec userId)
+const slots = [];           // créneaux
+const appointments = [];    // rendez-vous
 
-const doctors = [
-    { id: '1', name: 'Dr. Sophie Martin', specialty: 'Médecine générale', avatar: '👩‍⚕️' },
-    { id: '2', name: 'Dr. Thomas Durand', specialty: 'Cardiologie', avatar: '👨‍⚕️' },
-    { id: '3', name: 'Dr. Claire Petit', specialty: 'Pédiatrie', avatar: '👩‍⚕️' },
-    { id: '4', name: 'Dr. Marc Dubois', specialty: 'Dermatologie', avatar: '👨‍⚕️' },
-    { id: '5', name: 'Dr. Laura Bernard', specialty: 'Neurologie', avatar: '👩‍⚕️' },
-    { id: '6', name: 'Dr. Antoine Rousseau', specialty: 'Rhumatologie', avatar: '👨‍⚕️' },
-];
+// Helper : trouver un médecin par userId
+function findDoctorByUserId(userId) {
+    return doctors.find(d => d.userId === userId);
+}
 
-const activeCalls = new Map();
+// Helper : trouver les créneaux d'un médecin
+function getSlotsByDoctorId(doctorId) {
+    return slots.filter(s => s.doctorId === doctorId);
+}
 
 // ============================================
 // ROUTES API
 // ============================================
 
-app.get('/api/doctors', (req, res) => {
-    res.json(doctors);
-});
-
+// 1. Inscription (patient ou médecin)
 app.post('/api/register', (req, res) => {
-    const { name, email, password, role } = req.body;
-    
+    const { name, email, password, role, specialty, description } = req.body;
     if (!name || !email || !password || !role) {
-        return res.status(400).json({ success: false, message: 'Tous les champs sont requis.' });
+        return res.status(400).json({ success: false, message: 'Champs requis' });
     }
-    
-    if (role !== 'patient' && role !== 'medecin') {
-        return res.status(400).json({ success: false, message: 'Rôle invalide.' });
+    if (users.find(u => u.email === email)) {
+        return res.status(409).json({ success: false, message: 'Email déjà utilisé' });
     }
-    
-    const existingUser = users.find(u => u.email === email);
-    if (existingUser) {
-        return res.status(409).json({ success: false, message: 'Cet email est déjà utilisé.' });
-    }
-    
     const newUser = {
         id: Date.now().toString(),
-        name,
-        email,
-        password,
-        role
+        name, email, password, role
     };
     users.push(newUser);
-    
-    console.log(`📝 Nouvel utilisateur: ${name} (${role})`);
-    res.status(201).json({ success: true, message: 'Inscription réussie !' });
+
+    if (role === 'medecin') {
+        if (!specialty) {
+            return res.status(400).json({ success: false, message: 'Spécialité requise' });
+        }
+        doctors.push({
+            id: Date.now().toString(),
+            userId: newUser.id,
+            name: newUser.name,
+            specialty,
+            description: description || ''
+        });
+    }
+
+    console.log(`📝 Inscription: ${name} (${role})`);
+    res.json({ success: true, message: 'Inscription réussie' });
 });
 
+// 2. Connexion
 app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
     const user = users.find(u => u.email === email && u.password === password);
-    
-    if (!user) {
-        return res.status(401).json({ success: false, message: 'Email ou mot de passe invalide.' });
+    if (!user) return res.status(401).json({ success: false, message: 'Identifiants invalides' });
+    let doctorInfo = null;
+    if (user.role === 'medecin') {
+        doctorInfo = findDoctorByUserId(user.id);
     }
-    
-    console.log(`🔐 Connexion: ${user.name} (${user.role})`);
     res.json({
         success: true,
-        user: {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role
-        }
+        user: { id: user.id, name: user.name, email: user.email, role: user.role, doctorId: doctorInfo?.id || null }
     });
 });
 
+// 3. Récupérer la liste des médecins (avec leurs spécialités)
+app.get('/api/doctors', (req, res) => {
+    const doctorList = doctors.map(d => ({
+        id: d.id,
+        name: d.name,
+        specialty: d.specialty,
+        description: d.description
+    }));
+    res.json(doctorList);
+});
+
+// 4. Récupérer les créneaux disponibles d'un médecin (non réservés)
+app.get('/api/doctors/:doctorId/slots', (req, res) => {
+    const { doctorId } = req.params;
+    const doctor = doctors.find(d => d.id === doctorId);
+    if (!doctor) return res.status(404).json({ success: false, message: 'Médecin non trouvé' });
+    const availableSlots = slots.filter(s => s.doctorId === doctorId && !s.isBooked);
+    res.json(availableSlots);
+});
+
+// 5. Créer un créneau (par le médecin)
+app.post('/api/slots', (req, res) => {
+    const { doctorId, startTime, durationMinutes } = req.body;
+    const doctor = doctors.find(d => d.id === doctorId);
+    if (!doctor) return res.status(404).json({ success: false, message: 'Médecin inconnu' });
+    const endTime = new Date(new Date(startTime).getTime() + durationMinutes * 60000).toISOString();
+    const newSlot = {
+        id: Date.now().toString(),
+        doctorId,
+        startTime,
+        endTime,
+        isBooked: false,
+        patientId: null
+    };
+    slots.push(newSlot);
+    res.json({ success: true, slot: newSlot });
+});
+
+// 6. Prendre rendez-vous (patient)
+app.post('/api/appointments', (req, res) => {
+    const { patientId, patientName, doctorId, slotId } = req.body;
+    const slot = slots.find(s => s.id === slotId);
+    if (!slot) return res.status(404).json({ success: false, message: 'Créneau inexistant' });
+    if (slot.isBooked) return res.status(409).json({ success: false, message: 'Créneau déjà réservé' });
+    slot.isBooked = true;
+    slot.patientId = patientId;
+    const newAppointment = {
+        id: Date.now().toString(),
+        patientId,
+        patientName,
+        doctorId,
+        slotId,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        status: 'upcoming'
+    };
+    appointments.push(newAppointment);
+    res.json({ success: true, appointment: newAppointment });
+});
+
+// 7. Récupérer les rendez-vous d'un patient
+app.get('/api/patients/:patientId/appointments', (req, res) => {
+    const { patientId } = req.params;
+    const patientAppointments = appointments.filter(a => a.patientId === patientId);
+    res.json(patientAppointments);
+});
+
+// 8. Récupérer les rendez-vous d'un médecin
+app.get('/api/doctors/:doctorId/appointments', (req, res) => {
+    const { doctorId } = req.params;
+    const doctorAppointments = appointments.filter(a => a.doctorId === doctorId);
+    res.json(doctorAppointments);
+});
+
+// 9. Annuler un rendez-vous (patient)
+app.delete('/api/appointments/:appointmentId', (req, res) => {
+    const { appointmentId } = req.params;
+    const index = appointments.findIndex(a => a.id === appointmentId);
+    if (index === -1) return res.status(404).json({ success: false });
+    const appt = appointments[index];
+    const slot = slots.find(s => s.id === appt.slotId);
+    if (slot) {
+        slot.isBooked = false;
+        slot.patientId = null;
+    }
+    appointments.splice(index, 1);
+    res.json({ success: true });
+});
+
 // ============================================
-// SIGNALISATION WEBSOCKET
+// WEBSOCKET (Signalisation WebRTC + appel)
 // ============================================
 
+const activeCalls = new Map();
+
 io.on('connection', (socket) => {
-    console.log('🟢 Client connecté:', socket.id);
-    
-    socket.on('register-user-name', (data) => {
+    console.log('🟢 Client connecté', socket.id);
+    socket.on('register', (data) => {
         socket.userId = data.userId;
         socket.userName = data.userName;
         socket.userRole = data.role;
-        console.log(`👤 ${data.userName} (${data.role}) connecté`);
     });
-    
-    socket.on('call-doctor', (data) => {
-        const { patientId, patientName, doctorId, doctorName } = data;
-        console.log(`📞 Appel: ${patientName} -> ${doctorName}`);
-        
-        const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+
+    // Patient demande un appel pour un rendez-vous spécifique
+    socket.on('call:request', (data) => {
+        const { appointmentId, patientId, patientName, doctorId, doctorName } = data;
+        const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
         activeCalls.set(callId, {
-            callId, patientId, patientName, doctorId, doctorName,
+            callId, appointmentId, patientId, patientName, doctorId, doctorName,
             patientSocketId: socket.id, status: 'waiting'
         });
-        
-        socket.broadcast.emit('incoming-call', {
-            callId, patientId, patientName, doctorId, doctorName, fromSocketId: socket.id
+        // Notifier le médecin (tous ses sockets)
+        socket.broadcast.emit('call:incoming', {
+            callId, appointmentId, patientId, patientName, doctorId, doctorName,
+            fromSocketId: socket.id
         });
-        socket.emit('call-requested', { callId });
+        socket.emit('call:requested', { callId });
     });
-    
-    socket.on('accept-call', (data) => {
+
+    socket.on('call:accept', (data) => {
         const { callId, doctorId, doctorName, patientSocketId } = data;
         const call = activeCalls.get(callId);
-        
         if (call && call.status === 'waiting') {
             call.status = 'accepted';
             call.doctorSocketId = socket.id;
-            call.doctorName = doctorName;
-            
-            io.to(call.patientSocketId).emit('call-accepted', {
+            io.to(call.patientSocketId).emit('call:accepted', {
                 callId, doctorId, doctorName, doctorSocketId: socket.id
             });
-            socket.emit('ready-for-webrtc', {
+            socket.emit('webrtc:ready', {
                 callId, patientId: call.patientId, patientName: call.patientName,
                 patientSocketId: call.patientSocketId
             });
         }
     });
-    
-    socket.on('reject-call', (data) => {
+
+    socket.on('call:reject', (data) => {
         const { callId, patientSocketId } = data;
-        io.to(patientSocketId).emit('call-rejected', { message: 'Médecin indisponible' });
+        io.to(patientSocketId).emit('call:rejected');
         activeCalls.delete(callId);
     });
-    
-    socket.on('webrtc-offer', (data) => {
-        io.to(data.targetSocketId).emit('webrtc-offer', { offer: data.offer, fromSocketId: socket.id });
+
+    // WebRTC signalisation
+    socket.on('webrtc:offer', (data) => {
+        io.to(data.targetSocketId).emit('webrtc:offer', { offer: data.offer, fromSocketId: socket.id });
     });
-    
-    socket.on('webrtc-answer', (data) => {
-        io.to(data.targetSocketId).emit('webrtc-answer', { answer: data.answer, fromSocketId: socket.id });
+    socket.on('webrtc:answer', (data) => {
+        io.to(data.targetSocketId).emit('webrtc:answer', { answer: data.answer, fromSocketId: socket.id });
     });
-    
-    socket.on('webrtc-ice-candidate', (data) => {
-        io.to(data.targetSocketId).emit('webrtc-ice-candidate', { candidate: data.candidate, fromSocketId: socket.id });
+    socket.on('webrtc:ice-candidate', (data) => {
+        io.to(data.targetSocketId).emit('webrtc:ice-candidate', { candidate: data.candidate, fromSocketId: socket.id });
     });
-    
-    socket.on('end-call', (data) => {
+
+    socket.on('call:end', (data) => {
         const call = activeCalls.get(data.callId);
         if (call) {
-            if (call.patientSocketId) io.to(call.patientSocketId).emit('call-ended');
-            if (call.doctorSocketId) io.to(call.doctorSocketId).emit('call-ended');
+            if (call.patientSocketId) io.to(call.patientSocketId).emit('call:ended');
+            if (call.doctorSocketId) io.to(call.doctorSocketId).emit('call:ended');
             activeCalls.delete(data.callId);
         }
     });
-    
-    socket.on('sensor-data', (data) => {
-        io.to(data.targetSocketId).emit('sensor-data', data);
-    });
-    
+
     socket.on('disconnect', () => {
-        console.log('🔴 Client déconnecté:', socket.id);
+        console.log('🔴 Déconnecté', socket.id);
         for (const [callId, call] of activeCalls.entries()) {
             if (call.patientSocketId === socket.id || call.doctorSocketId === socket.id) {
                 activeCalls.delete(callId);
@@ -216,32 +263,13 @@ io.on('connection', (socket) => {
     });
 });
 
-// ============================================
-// DÉMARRAGE
-// ============================================
-
-function getLocalIp() {
-    const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-        for (const net of interfaces[name]) {
-            if (net.family === 'IPv4' && !net.internal) {
-                return net.address;
-            }
-        }
-    }
-    return 'localhost';
-}
-
-server.listen(port, '0.0.0.0', () => {
-    const localIp = getLocalIp();
-    console.log('\n========================================');
-    console.log('🔒 SERVEUR HTTPS AVEC TURN/STUN');
-    console.log('========================================');
-    console.log(`📍 https://localhost:${port}`);
-    console.log(`📍 https://${localIp}:${port}`);
-    console.log('========================================');
-    console.log('🔐 STUN/TURN:');
-    console.log(`   stun:${localIp}:3478`);
-    console.log(`   turn:${localIp}:3478 (patient/patient123)`);
-    console.log('========================================\n');
+server.listen(PORT, '0.0.0.0', () => {
+    const ifaces = os.networkInterfaces();
+    let ip = 'localhost';
+    Object.keys(ifaces).forEach(ifname => {
+        ifaces[ifname].forEach(iface => {
+            if (iface.family === 'IPv4' && !iface.internal) ip = iface.address;
+        });
+    });
+    console.log(`\n🔒 Serveur démarré sur https://${ip}:${PORT}\n`);
 });
