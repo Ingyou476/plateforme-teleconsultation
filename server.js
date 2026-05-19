@@ -8,17 +8,15 @@ const os = require('os');
 const app = express();
 const PORT = 3443;
 
-// Certificats SSL (modifie le chemin si ton utilisateur n'est pas 'iut')
-const SSL_KEY_PATH = '/home/iut/certs/key.pem';
-const SSL_CERT_PATH = '/home/iut/certs/cert.pem';
+// ---------- Certificats SSL (générés avec mkcert) ----------
+// Chemins à adapter si besoin (utilisateur iut)
+const SSL_KEY_PATH = '/home/iut/certs/192.168.23.129-key.pem';
+const SSL_CERT_PATH = '/home/iut/certs/192.168.23.129.pem';
 
-try {
-    fs.accessSync(SSL_KEY_PATH, fs.constants.R_OK);
-    fs.accessSync(SSL_CERT_PATH, fs.constants.R_OK);
-} catch (err) {
-    console.error('❌ Certificats SSL non trouvés. Générez-les avec :');
-    console.error('mkdir -p ~/certs && cd ~/certs');
-    console.error('openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=192.168.23.129"');
+if (!fs.existsSync(SSL_KEY_PATH) || !fs.existsSync(SSL_CERT_PATH)) {
+    console.error('❌ Certificats SSL introuvables. Générez-les avec :');
+    console.error('  mkcert -install');
+    console.error('  cd ~/certs && mkcert 192.168.23.129');
     process.exit(1);
 }
 
@@ -36,109 +34,57 @@ const io = socketIo(server, {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ============================================
-// DONNÉES EN MÉMOIRE
-// ============================================
+// ---------- Base de données mémoire ----------
 const users = [];               // { id, name, email, password, role }
-const doctors = [];             // { id, userId, name, specialty, description, exceptions: [date] }
+const doctors = [];             // { id, userId, name, specialty, description, defaultSchedule, exceptions }
 const appointments = [];        // { id, patientId, patientName, doctorId, doctorName, start, end, status }
 const activeSessions = new Map(); // userId -> socketId
 
-// ============================================
-// FONCTIONS UTILES
-// ============================================
-function findDoctorByUserId(userId) {
-    return doctors.find(d => d.userId === userId);
-}
-
-// Génère les créneaux disponibles pour un médecin à une date donnée
-function getAvailableSlotsForDate(doctorId, dateStr) {
-    const doctor = doctors.find(d => d.id === doctorId);
-    if (!doctor) return [];
-
-    // Vérifier exception (indisponibilité totale)
-    if (doctor.exceptions && doctor.exceptions.includes(dateStr)) {
-        return [];
-    }
-
-    // Par défaut : jours ouvrés lun-ven 9h-18h, créneaux de 30 min
-    const targetDate = new Date(dateStr);
-    const dayOfWeek = targetDate.getDay(); // 0 dimanche, 1 lundi...
-    if (dayOfWeek === 0 || dayOfWeek === 6) return []; // weekend
-
-    const slots = [];
-    const startHour = 9, startMin = 0;
-    const endHour = 18, endMin = 0;
-    let current = new Date(targetDate);
-    current.setHours(startHour, startMin, 0, 0);
-    const end = new Date(targetDate);
-    end.setHours(endHour, endMin, 0, 0);
-
-    while (current < end) {
-        const slotStart = new Date(current);
-        const slotEnd = new Date(current.getTime() + 30 * 60000);
-        if (slotEnd <= end) {
-            // Vérifier si déjà réservé
-            const alreadyBooked = appointments.some(a =>
-                a.doctorId === doctorId && a.start === slotStart.toISOString()
-            );
-            if (!alreadyBooked) {
-                slots.push({
-                    start: slotStart.toISOString(),
-                    end: slotEnd.toISOString(),
-                    startTimeFormatted: slotStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                });
-            }
-        }
-        current = new Date(current.getTime() + 30 * 60000);
-    }
-    return slots;
-}
-
-// ============================================
-// API ROUTES
-// ============================================
-
-// 1. Inscription
+// ---------- Routes API ----------
 app.post('/api/register', (req, res) => {
     const { name, email, password, role, specialty, description } = req.body;
     if (!name || !email || !password || !role) {
-        return res.status(400).json({ success: false, message: 'Champs manquants' });
+        return res.status(400).json({ success: false, message: 'Champs requis' });
     }
     if (users.find(u => u.email === email)) {
         return res.status(409).json({ success: false, message: 'Email déjà utilisé' });
     }
-    const newUser = {
-        id: Date.now().toString(),
-        name, email, password, role
-    };
+    const newUser = { id: Date.now().toString(), name, email, password, role };
     users.push(newUser);
 
     if (role === 'medecin') {
         if (!specialty) {
             return res.status(400).json({ success: false, message: 'Spécialité requise' });
         }
+        // Planning par défaut : lundi-vendredi 9h-18h, créneaux de 30 min
+        const defaultSchedule = {
+            monday: { enabled: true, start: '09:00', end: '18:00', slotDuration: 30 },
+            tuesday: { enabled: true, start: '09:00', end: '18:00', slotDuration: 30 },
+            wednesday: { enabled: true, start: '09:00', end: '18:00', slotDuration: 30 },
+            thursday: { enabled: true, start: '09:00', end: '18:00', slotDuration: 30 },
+            friday: { enabled: true, start: '09:00', end: '18:00', slotDuration: 30 },
+            saturday: { enabled: false },
+            sunday: { enabled: false }
+        };
         doctors.push({
             id: Date.now().toString(),
             userId: newUser.id,
             name: newUser.name,
             specialty,
             description: description || '',
-            exceptions: []   // liste des dates "YYYY-MM-DD" où le médecin est indisponible
+            defaultSchedule,
+            exceptions: [] // { date: 'YYYY-MM-DD', allDay: true }
         });
     }
-
-    console.log(`📝 Inscription: ${name} (${role})`);
     res.json({ success: true, message: 'Inscription réussie' });
 });
 
-// 2. Connexion
 app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
     const user = users.find(u => u.email === email && u.password === password);
     if (!user) return res.status(401).json({ success: false, message: 'Identifiants invalides' });
 
-    // Déconnexion de l'ancienne session
+    // Déconnexion de l'autre session
     const oldSocketId = activeSessions.get(user.id);
     if (oldSocketId) {
         const oldSocket = io.sockets.sockets.get(oldSocketId);
@@ -148,7 +94,7 @@ app.post('/api/login', (req, res) => {
 
     let doctorInfo = null;
     if (user.role === 'medecin') {
-        doctorInfo = findDoctorByUserId(user.id);
+        doctorInfo = doctors.find(d => d.userId === user.id);
     }
     res.json({
         success: true,
@@ -162,7 +108,6 @@ app.post('/api/login', (req, res) => {
     });
 });
 
-// 3. Liste des médecins
 app.get('/api/doctors', (req, res) => {
     const list = doctors.map(d => ({
         id: d.id,
@@ -173,91 +118,105 @@ app.get('/api/doctors', (req, res) => {
     res.json(list);
 });
 
-// 4. Créneaux disponibles pour un médecin à une date
 app.get('/api/doctors/:doctorId/slots', (req, res) => {
     const { doctorId } = req.params;
     const { date } = req.query;
     if (!date) return res.status(400).json({ success: false, message: 'Date manquante' });
-    const slots = getAvailableSlotsForDate(doctorId, date);
+
+    const doctor = doctors.find(d => d.id === doctorId);
+    if (!doctor) return res.status(404).json([]);
+
+    const targetDate = new Date(date);
+    const dayOfWeek = targetDate.toLocaleDateString('en-US', { weekday: 'lowercase' });
+    const schedule = doctor.defaultSchedule[dayOfWeek];
+    if (!schedule || !schedule.enabled) return res.json([]);
+
+    const exception = doctor.exceptions.find(e => e.date === date);
+    if (exception && exception.allDay) return res.json([]);
+
+    const slots = [];
+    const [startHour, startMin] = schedule.start.split(':').map(Number);
+    const [endHour, endMin] = schedule.end.split(':').map(Number);
+    let current = new Date(targetDate);
+    current.setHours(startHour, startMin, 0, 0);
+    const end = new Date(targetDate);
+    end.setHours(endHour, endMin, 0, 0);
+
+    while (current < end) {
+        const slotStart = new Date(current);
+        const slotEnd = new Date(current.getTime() + schedule.slotDuration * 60000);
+        if (slotEnd <= end) {
+            const alreadyBooked = appointments.some(a =>
+                a.doctorId === doctorId && a.start === slotStart.toISOString()
+            );
+            if (!alreadyBooked) {
+                slots.push({
+                    start: slotStart.toISOString(),
+                    end: slotEnd.toISOString(),
+                    startTimeFormatted: slotStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                });
+            }
+        }
+        current = new Date(current.getTime() + schedule.slotDuration * 60000);
+    }
     res.json(slots);
 });
 
-// 5. Prendre rendez-vous
 app.post('/api/appointments', (req, res) => {
     const { patientId, patientName, doctorId, doctorName, start, end } = req.body;
-    // Vérifier doublon
     const existing = appointments.find(a => a.doctorId === doctorId && a.start === start);
-    if (existing) {
-        return res.status(409).json({ success: false, message: 'Créneau déjà réservé' });
-    }
+    if (existing) return res.status(409).json({ success: false, message: 'Créneau déjà pris' });
     const newAppointment = {
         id: Date.now().toString(),
-        patientId,
-        patientName,
-        doctorId,
-        doctorName,
-        start,
-        end,
-        status: 'upcoming'
+        patientId, patientName, doctorId, doctorName, start, end, status: 'upcoming'
     };
     appointments.push(newAppointment);
     res.json({ success: true, appointment: newAppointment });
 });
 
-// 6. Rendez-vous d'un patient
 app.get('/api/patients/:patientId/appointments', (req, res) => {
-    const { patientId } = req.params;
-    const patientAppointments = appointments.filter(a => a.patientId === patientId);
+    const patientAppointments = appointments.filter(a => a.patientId === req.params.patientId);
     res.json(patientAppointments);
 });
 
-// 7. Rendez-vous d'un médecin
 app.get('/api/doctors/:doctorId/appointments', (req, res) => {
-    const { doctorId } = req.params;
-    const doctorAppointments = appointments.filter(a => a.doctorId === doctorId);
+    const doctorAppointments = appointments.filter(a => a.doctorId === req.params.doctorId);
     res.json(doctorAppointments);
 });
 
-// 8. Annuler un rendez-vous
 app.delete('/api/appointments/:appointmentId', (req, res) => {
-    const { appointmentId } = req.params;
-    const index = appointments.findIndex(a => a.id === appointmentId);
-    if (index === -1) return res.status(404).json({ success: false });
-    appointments.splice(index, 1);
+    const idx = appointments.findIndex(a => a.id === req.params.appointmentId);
+    if (idx === -1) return res.status(404).json({ success: false });
+    appointments.splice(idx, 1);
     res.json({ success: true });
 });
 
-// 9. Ajouter une exception (indisponibilité) pour un médecin
 app.post('/api/doctors/:doctorId/exceptions', (req, res) => {
     const { doctorId } = req.params;
     const { date } = req.body;
     const doctor = doctors.find(d => d.id === doctorId);
     if (!doctor) return res.status(404).json({ success: false });
-    if (!doctor.exceptions.includes(date)) {
-        doctor.exceptions.push(date);
+    if (!doctor.exceptions.find(e => e.date === date)) {
+        doctor.exceptions.push({ date, allDay: true });
     }
     res.json({ success: true });
 });
 
-// ============================================
-// WEBSOCKET (Signalisation WebRTC)
-// ============================================
+// ---------- WebSocket (signalisation WebRTC) ----------
 const activeCalls = new Map();
 
 io.on('connection', (socket) => {
-    console.log('🟢 Client connecté', socket.id);
+    console.log('🟢 Nouveau client:', socket.id);
 
     socket.on('register', (data) => {
-        const { userId, userName, role } = data;
-        socket.userId = userId;
-        socket.userName = userName;
-        socket.userRole = role;
-        activeSessions.set(userId, socket.id);
-        socket.join(`user-${userId}`);
-        console.log(`✅ ${userName} (${role}) enregistré`);
+        socket.userId = data.userId;
+        socket.userName = data.userName;
+        socket.userRole = data.role;
+        activeSessions.set(data.userId, socket.id);
+        socket.join(`user-${data.userId}`);
+        console.log(`✅ ${data.userName} (${data.role}) enregistré`);
     });
 
-    // Patient demande un appel pour un rendez-vous
     socket.on('call:request', (data) => {
         const { appointmentId, patientId, patientName, doctorId, doctorName } = data;
         const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
@@ -282,7 +241,9 @@ io.on('connection', (socket) => {
                 callId, doctorId, doctorName, doctorSocketId: socket.id
             });
             socket.emit('webrtc:ready', {
-                callId, patientId: call.patientId, patientName: call.patientName,
+                callId,
+                patientId: call.patientId,
+                patientName: call.patientName,
                 patientSocketId: call.patientSocketId
             });
         }
@@ -294,7 +255,6 @@ io.on('connection', (socket) => {
         activeCalls.delete(callId);
     });
 
-    // Signalisation WebRTC
     socket.on('webrtc:offer', (data) => {
         io.to(data.targetSocketId).emit('webrtc:offer', { offer: data.offer, fromSocketId: socket.id });
     });
@@ -304,7 +264,6 @@ io.on('connection', (socket) => {
     socket.on('webrtc:ice-candidate', (data) => {
         io.to(data.targetSocketId).emit('webrtc:ice-candidate', { candidate: data.candidate, fromSocketId: socket.id });
     });
-
     socket.on('call:end', (data) => {
         const call = activeCalls.get(data.callId);
         if (call) {
@@ -329,9 +288,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// ============================================
-// DÉMARRAGE
-// ============================================
 function getLocalIp() {
     const ifaces = os.networkInterfaces();
     for (const name of Object.keys(ifaces)) {
@@ -345,5 +301,5 @@ function getLocalIp() {
 server.listen(PORT, '0.0.0.0', () => {
     const ip = getLocalIp();
     console.log(`\n🔒 Serveur HTTPS démarré sur https://${ip}:${PORT}`);
-    console.log(`📅 Calendrier, prise de RDV, WebRTC avec TURN actif.\n`);
+    console.log(`📅 Calendrier, RDV, WebRTC avec TURN actif.\n`);
 });

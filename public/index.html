@@ -32,12 +32,6 @@
             font-size: 0.9rem;
         }
         button:hover { background: #1f5e7a; transform: scale(0.98); }
-        .btn-outline {
-            background: transparent;
-            border: 1px solid #2c7da0;
-            color: #2c7da0;
-        }
-        .btn-outline:hover { background: #e9f0f5; transform: none; }
         .btn-danger { background: #e63946; }
         .btn-danger:hover { background: #c1121f; }
         .btn-success { background: #2a9d8f; }
@@ -83,9 +77,6 @@
         .calendar-day.selected-day {
             background: #2c7da0;
             color: white;
-        }
-        .calendar-day.today {
-            border: 2px solid #2c7da0;
         }
         .weekday {
             font-weight: bold;
@@ -145,7 +136,6 @@
         <div id="userInfo"></div>
     </div>
 
-    <!-- Auth panel -->
     <div id="authPanel" class="card">
         <div id="authMsg"></div>
         <div class="grid-2">
@@ -173,7 +163,6 @@
         </div>
     </div>
 
-    <!-- Dashboard -->
     <div id="dashboard" class="hidden">
         <div id="dashboardContent" class="card"></div>
     </div>
@@ -181,16 +170,13 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-    // ------------------------------------------------------------
     // Configuration ICE (STUN + TURN) - À adapter à ton IP
-    // ------------------------------------------------------------
     const SERVER_IP = '192.168.23.129';
     const ICE_CONFIG = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: `stun:${SERVER_IP}:3478` },
-            { urls: `turn:${SERVER_IP}:3478`, username: 'patient', credential: 'patient123' },
-            { urls: `turn:${SERVER_IP}:3478`, username: 'medecin', credential: 'medecin123' }
+            { urls: `turn:${SERVER_IP}:3478`, username: 'patient', credential: 'patient123' }
         ],
         iceCandidatePoolSize: 10
     };
@@ -201,9 +187,8 @@
     let activeCallId = null, targetSocketId = null;
     let sensorInterval = null;
     let currentSelectedDoctorId = null;
-    let currentSelectedDate = null;
+    let currentDoctorName = null;
 
-    // Helper UI
     function showMsg(divId, msg, isError = true) {
         const div = document.getElementById(divId);
         div.innerHTML = `<div class="alert ${isError ? 'alert-error' : 'alert-success'}">${msg}</div>`;
@@ -214,7 +199,6 @@
         document.getElementById('doctorFields').classList.toggle('hidden', e.target.value !== 'medecin');
     });
 
-    // Inscription
     document.getElementById('registerBtn').onclick = async () => {
         const name = document.getElementById('regName').value;
         const email = document.getElementById('regEmail').value;
@@ -234,7 +218,6 @@
         else showMsg('authMsg', data.message);
     };
 
-    // Connexion
     document.getElementById('loginBtn').onclick = async () => {
         const email = document.getElementById('loginEmail').value;
         const password = document.getElementById('loginPassword').value;
@@ -271,13 +254,10 @@
         socket.on('connect', () => {
             socket.emit('register', { userId: currentUser.id, userName: currentUser.name, role: currentUser.role });
         });
-        socket.on('force-logout', (msg) => {
-            alert(msg.message);
-            logout();
-        });
+        socket.on('force-logout', (msg) => { alert(msg.message); logout(); });
         socket.on('call:incoming', (data) => {
             if (currentUser.role !== 'medecin') return;
-            if (confirm(`📞 Appel entrant de ${data.patientName} pour la consultation. Accepter ?`)) {
+            if (confirm(`📞 Appel entrant de ${data.patientName}. Accepter ?`)) {
                 socket.emit('call:accept', { callId: data.callId, doctorId: currentUser.doctorId, doctorName: currentUser.name, patientSocketId: data.fromSocketId });
             } else {
                 socket.emit('call:reject', { callId: data.callId, patientSocketId: data.fromSocketId });
@@ -297,10 +277,9 @@
         socket.on('webrtc:answer', async (data) => await handleAnswer(data));
         socket.on('webrtc:ice-candidate', async (data) => await handleIceCandidate(data));
         socket.on('call:ended', () => endCall());
-        socket.on('call:rejected', () => { alert('Le médecin a refusé l’appel'); });
+        socket.on('call:rejected', () => alert('Appel refusé'));
     }
 
-    // WebRTC
     async function startWebRTC(isInitiator) {
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -320,7 +299,6 @@
                 await peerConnection.setLocalDescription(offer);
                 socket.emit('webrtc:offer', { targetSocketId, offer });
             }
-            // Afficher l'interface d'appel
             const container = document.getElementById('consultationArea') || document.getElementById('dashboardContent');
             container.innerHTML = `
                 <div class="video-container">
@@ -370,7 +348,7 @@
         sensorInterval = setInterval(() => {
             const bpm = Math.floor(Math.random() * (100 - 60 + 1) + 60);
             document.getElementById('heartRate').innerText = `${bpm} BPM`;
-            const fhirObservation = {
+            const fhir = {
                 resourceType: "Observation",
                 status: "final",
                 code: {
@@ -383,24 +361,20 @@
                 subject: { reference: `Patient/${currentUser.id}` },
                 effectiveDateTime: new Date().toISOString()
             };
-            document.getElementById('fhirJson').innerHTML = `<pre>${JSON.stringify(fhirObservation, null, 2)}</pre>`;
-            if (targetSocketId) {
-                socket.emit('sensor:data', { targetSocketId, fhir: fhirObservation });
-            }
+            document.getElementById('fhirJson').innerHTML = `<pre>${JSON.stringify(fhir, null, 2)}</pre>`;
+            if (targetSocketId) socket.emit('sensor:data', { targetSocketId, fhir });
         }, 5000);
     }
 
-    // ---------- VUE MÉDECIN ----------
+    // ----- Médecin -----
     async function loadDoctorDashboard() {
         const doctorId = currentUser.doctorId;
         const resApp = await fetch(`/api/doctors/${doctorId}/appointments`);
         const appointments = await resApp.json();
         const container = document.getElementById('dashboardContent');
         container.innerHTML = `
-            <h2>👨‍⚕️ Tableau de bord - Dr. ${currentUser.name}</h2>
-            <div class="flex" style="justify-content: space-between; margin: 20px 0;">
-                <button id="addExceptionBtn">📅 Indisponibilité exceptionnelle</button>
-            </div>
+            <h2>👨‍⚕️ Dr. ${currentUser.name}</h2>
+            <button id="addExceptionBtn">📅 Ajouter une indisponibilité (jour entier)</button>
             <h3>📋 Rendez-vous à venir</h3>
             <div id="appointmentsList"></div>
             <div id="consultationArea"></div>
@@ -409,7 +383,7 @@
         listDiv.innerHTML = appointments.map(a => `
             <div class="slot">
                 <div><strong>${a.patientName}</strong> le ${new Date(a.start).toLocaleString()}</div>
-                <button onclick="startDoctorCall('${a.id}','${a.patientId}','${a.patientName}')">🩺 Démarrer consultation</button>
+                <button onclick="startDoctorCall('${a.id}','${a.patientId}','${a.patientName}')" class="btn-success">🩺 Démarrer consultation</button>
             </div>
         `).join('');
         document.getElementById('addExceptionBtn').onclick = async () => {
@@ -426,13 +400,10 @@
 
     window.startDoctorCall = (appointmentId, patientId, patientName) => {
         if (!socket) return;
-        socket.emit('call:request', {
-            appointmentId, patientId, patientName,
-            doctorId: currentUser.doctorId, doctorName: currentUser.name
-        });
+        socket.emit('call:request', { appointmentId, patientId, patientName, doctorId: currentUser.doctorId, doctorName: currentUser.name });
     };
 
-    // ---------- VUE PATIENT ----------
+    // ----- Patient -----
     async function loadPatientDashboard() {
         const doctorsRes = await fetch('/api/doctors');
         const doctorsList = await doctorsRes.json();
@@ -444,10 +415,10 @@
             <h2>👋 Bonjour ${currentUser.name}</h2>
             <div class="grid-2">
                 <div>
-                    <h3>👨‍⚕️ Médecins</h3>
+                    <h3>👨‍⚕️ Médecins disponibles</h3>
                     <div id="doctorList"></div>
                 </div>
-                <div id="calendarPanel">
+                <div>
                     <h3>📅 Calendrier des disponibilités</h3>
                     <div id="calendarView"></div>
                     <div id="slotsView"></div>
@@ -461,15 +432,14 @@
 
         const doctorDiv = document.getElementById('doctorList');
         doctorDiv.innerHTML = doctorsList.map(d => `
-            <div class="doctor-card" data-id="${d.id}">
-                <strong>${d.name}</strong><br>
-                <small>${d.specialty}</small><br>
-                <p>${d.description || ''}</p>
+            <div class="doctor-card" data-id="${d.id}" data-name="${d.name}">
+                <strong>${d.name}</strong><br>${d.specialty}<br><small>${d.description || ''}</small>
             </div>
         `).join('');
         document.querySelectorAll('.doctor-card').forEach(card => {
             card.onclick = () => {
                 currentSelectedDoctorId = card.dataset.id;
+                currentDoctorName = card.dataset.name;
                 document.querySelectorAll('.doctor-card').forEach(c => c.classList.remove('selected'));
                 card.classList.add('selected');
                 renderCalendar();
@@ -481,7 +451,7 @@
             <div class="slot">
                 <div><strong>Dr. ${a.doctorName}</strong> le ${new Date(a.start).toLocaleString()}</div>
                 <div>
-                    <button onclick="cancelAppointment('${a.id}')">Annuler</button>
+                    <button onclick="cancelAppointment('${a.id}')" class="btn-danger">Annuler</button>
                     <button onclick="joinAppointment('${a.id}','${a.doctorId}')" class="btn-success">🩺 Rejoindre</button>
                 </div>
             </div>
@@ -494,75 +464,58 @@
         const today = new Date();
         let currentMonth = today.getMonth();
         let currentYear = today.getFullYear();
-        let selectedDate = new Date(currentYear, currentMonth, today.getDate());
-        const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+        let selectedDateStr = today.toISOString().slice(0,10);
+        const monthNames = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
-        async function buildCalendar(year, month) {
+        const buildCalendar = async (year, month) => {
             const firstDay = new Date(year, month, 1);
-            const lastDay = new Date(year, month + 1, 0);
-            const daysInMonth = lastDay.getDate();
-            const startWeekday = firstDay.getDay(); // 0 dimanche
-            const calendarDiv = document.getElementById('calendarView');
+            const daysInMonth = new Date(year, month+1, 0).getDate();
+            const startWeekday = firstDay.getDay();
             let html = `<div class="calendar-header"><button id="prevMonth">◀</button><h3>${monthNames[month]} ${year}</h3><button id="nextMonth">▶</button></div><div class="calendar-grid">`;
-            const weekdays = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+            const weekdays = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
             weekdays.forEach(d => html += `<div class="weekday">${d}</div>`);
-            for (let i = 0; i < startWeekday; i++) html += `<div></div>`;
-            for (let d = 1; d <= daysInMonth; d++) {
+            for (let i=0; i<startWeekday; i++) html += `<div></div>`;
+            for (let d=1; d<=daysInMonth; d++) {
                 const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                const isSelected = (selectedDate.getDate() === d && selectedDate.getMonth() === month && selectedDate.getFullYear() === year);
+                const isSelected = (dateStr === selectedDateStr);
                 html += `<div class="calendar-day ${isSelected ? 'selected-day' : ''}" data-date="${dateStr}">${d}</div>`;
             }
             html += `</div>`;
-            calendarDiv.innerHTML = html;
+            document.getElementById('calendarView').innerHTML = html;
             document.querySelectorAll('.calendar-day').forEach(day => {
                 day.onclick = () => {
-                    const dateStr = day.dataset.date;
-                    selectedDate = new Date(dateStr);
+                    selectedDateStr = day.dataset.date;
                     buildCalendar(year, month);
-                    loadSlotsForDate(dateStr);
+                    loadSlots(selectedDateStr);
                 };
             });
             document.getElementById('prevMonth').onclick = () => {
-                let newMonth = month - 1;
-                let newYear = year;
-                if (newMonth < 0) { newMonth = 11; newYear--; }
+                let newMonth = month-1, newYear = year;
+                if (newMonth<0) { newMonth=11; newYear--; }
                 buildCalendar(newYear, newMonth);
             };
             document.getElementById('nextMonth').onclick = () => {
-                let newMonth = month + 1;
-                let newYear = year;
-                if (newMonth > 11) { newMonth = 0; newYear++; }
+                let newMonth = month+1, newYear = year;
+                if (newMonth>11) { newMonth=0; newYear++; }
                 buildCalendar(newYear, newMonth);
             };
-            if (selectedDate.getMonth() === month && selectedDate.getFullYear() === year) {
-                loadSlotsForDate(selectedDate.toISOString().slice(0,10));
-            }
-        }
-        buildCalendar(currentYear, currentMonth);
+            await loadSlots(selectedDateStr);
+        };
+        await buildCalendar(currentYear, currentMonth);
     }
 
-    async function loadSlotsForDate(dateStr) {
+    async function loadSlots(dateStr) {
         const res = await fetch(`/api/doctors/${currentSelectedDoctorId}/slots?date=${dateStr}`);
         const slots = await res.json();
         const slotsDiv = document.getElementById('slotsView');
         if (!slotsDiv) return;
-        if (slots.length === 0) {
-            slotsDiv.innerHTML = '<p>Aucun créneau disponible ce jour.</p>';
-            return;
-        }
-        slotsDiv.innerHTML = `<h4>Créneaux disponibles le ${new Date(dateStr).toLocaleDateString()}</h4>` + slots.map(s => `
-            <div class="slot">
-                <span>🕒 ${s.startTimeFormatted}</span>
-                <button onclick="bookSlot('${s.start}','${s.end}')">Réserver</button>
-            </div>
+        if (!slots.length) { slotsDiv.innerHTML = '<p>Aucun créneau disponible ce jour.</p>'; return; }
+        slotsDiv.innerHTML = `<h4>Créneaux le ${new Date(dateStr).toLocaleDateString()}</h4>` + slots.map(s => `
+            <div class="slot"><span>🕒 ${s.startTimeFormatted}</span><button onclick="bookSlot('${s.start}','${s.end}')">Réserver</button></div>
         `).join('');
     }
 
     window.bookSlot = async (start, end) => {
-        // Récupérer le nom du médecin
-        const allDoctors = await fetch('/api/doctors').then(r => r.json());
-        const doctor = allDoctors.find(d => d.id === currentSelectedDoctorId);
-        if (!doctor) return;
         const res = await fetch('/api/appointments', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -570,29 +523,22 @@
                 patientId: currentUser.id,
                 patientName: currentUser.name,
                 doctorId: currentSelectedDoctorId,
-                doctorName: doctor.name,
+                doctorName: currentDoctorName,
                 start, end
             })
         });
         const data = await res.json();
-        if (data.success) {
-            alert("Rendez-vous pris !");
-            loadPatientDashboard();
-        } else {
-            alert(data.message || "Erreur lors de la réservation");
-        }
+        if (data.success) { alert("Rendez-vous pris !"); loadPatientDashboard(); }
+        else alert(data.message || "Erreur");
     };
 
-    window.cancelAppointment = async (appointmentId) => {
-        await fetch(`/api/appointments/${appointmentId}`, { method: 'DELETE' });
+    window.cancelAppointment = async (id) => {
+        await fetch(`/api/appointments/${id}`, { method: 'DELETE' });
         loadPatientDashboard();
     };
     window.joinAppointment = (appointmentId, doctorId) => {
         if (!socket) return;
-        socket.emit('call:request', {
-            appointmentId, patientId: currentUser.id, patientName: currentUser.name,
-            doctorId, doctorName: "Médecin"
-        });
+        socket.emit('call:request', { appointmentId, patientId: currentUser.id, patientName: currentUser.name, doctorId, doctorName: currentDoctorName });
     };
 </script>
 </body>
