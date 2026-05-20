@@ -182,16 +182,32 @@
         <button class="auth-tab active" id="btn-tab-login" onclick="switchAuthTab('login')">Connexion</button>
         <button class="auth-tab" id="btn-tab-reg" onclick="switchAuthTab('register')">Inscription</button>
       </div>
+      
       <div class="card" id="login-form">
         <div id="login-error"></div>
-        <div class="form-group"><label>Email</label><input type="email" id="login-email" placeholder="votre@email.com"></div>
-        <div class="form-group"><label>Mot de passe</label><input type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')loginUser()"></div>
-        <button class="btn btn-primary btn-full" onclick="loginUser()">Se connecter</button>
+        
+        <div id="login-stage-1">
+          <div class="form-group"><label>Email</label><input type="email" id="login-email" placeholder="votre@email.com"></div>
+          <div class="form-group"><label>Mot de passe</label><input type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')loginUser()"></div>
+          <button class="btn btn-primary btn-full" onclick="loginUser()">Se connecter</button>
+        </div>
+
+        <div id="login-stage-2" style="display: none; margin-top: 10px;">
+          <div style="background: #fff3cd; color: #856404; font-size: 0.8rem; padding: 10px; border-radius: 8px; margin-bottom: 14px; font-weight: bold;">
+            🛡️ Double Authentification requise pour le compte Administrateur.
+          </div>
+          <div class="form-group"><label style="color: var(--danger)">1. Quoi?</label><input type="text" id="2fa-ans-1" placeholder="Réponse 1"></div>
+          <div class="form-group"><label style="color: var(--danger)">2. how?</label><input type="text" id="2fa-ans-2" placeholder="Réponse 2"></div>
+          <div class="form-group"><label style="color: var(--danger)">3. what?</label><input type="text" id="2fa-ans-3" placeholder="Réponse 3"></div>
+          <button class="btn btn-danger btn-full" onclick="submitAdmin2FA()">Vérifier les clés de sécurité</button>
+        </div>
+
         <p class="text-muted" style="text-align:center;margin-top:14px; font-size: 0.8rem;">
           Démos: <b>patient@test.fr</b> | <b>medecin@test.fr</b> (pass123)<br>
           Cyber Admin: <span style="color:var(--danger)"><b>admin@cyber.fr</b> / <b>admincyberpass</b></span>
         </p>
       </div>
+      
       <div class="card" id="register-form" style="display:none">
         <div id="register-error"></div>
         <div class="form-row">
@@ -248,13 +264,13 @@
 
     <div id="admin-dashboard" style="display:none">
       <div class="card" style="background: #fafbfc; border-left: 5px solid var(--danger);">
-        <div class="card-title" style="color: var(--danger);">🛡️ Centre de Supervision Sécurité & Traçabilité (SIEM Audit Logs)</div>
+        <div class="card-title" style="color: var(--danger);">Centre de Supervision Sécurité & Traçabilité (SIEM Audit Logs)</div>
         <p class="text-muted" style="margin-bottom: 20px;">Vue globale en temps réel sur l'infrastructure DoctoLine, la conformité des flux et la détection d'intrusions.</p>
         
         <div class="cyber-grid">
           <div>
             <div class="card" style="padding:15px;">
-              <h3 style="font-size:1rem; margin-bottom:10px; color: var(--primary-dark)">👥 Comptes Utilisateurs</h3>
+              <h3 style="font-size:1rem; margin-bottom:10px; color: var(--primary-dark)">Comptes Utilisateurs</h3>
               <div id="admin-users-list" style="max-height: 400px; overflow-y:auto;"></div>
             </div>
           </div>
@@ -262,8 +278,8 @@
           <div>
             <div class="card" style="padding:15px;">
               <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:10px;">
-                <h3 style="font-size:1rem; color: var(--primary-dark)">📋 Journal de Traçabilité des Activités (Logs d'Audit)</h3>
-                <button class="btn btn-outline btn-sm" onclick="fetchAdminLogs()">🔄 Rafraîchir</button>
+                <h3 style="font-size:1rem; color: var(--primary-dark)">Journal de Traçabilité des Activités (Logs d'Audit)</h3>
+                <button class="btn btn-outline btn-sm" onclick="fetchAdminLogs()">Rafraîchir</button>
               </div>
               <div class="log-table-wrapper">
                 <table class="log-table">
@@ -278,8 +294,7 @@
                       <th>Détails de l'évènement</th>
                     </tr>
                   </thead>
-                  <tbody id="admin-logs-tbody">
-                    </tbody>
+                  <tbody id="admin-logs-tbody"></tbody>
                 </table>
               </div>
             </div>
@@ -295,21 +310,21 @@
     <div class="sensor-panel">
       <div class="sensor-grid">
         <div class="sensor-item"><div>❤️ Fréquence Cardiaque</div><div class="sensor-value hr" id="s-hr">--</div><span>bpm</span></div>
-        <div class="sensor-item"><div>🌡️ Température</div><div class="sensor-value temp" id="s-temp">--</div><span>°C</span></div>
-        <div class="sensor-item"><div>💨 SpO2</div><div class="sensor-value spo2" id="s-spo2">--</div><span>%</span></div>
+        <div class="sensor-item"><div> Température</div><div class="sensor-value temp" id="s-temp">--</div><span>°C</span></div>
+        <div class="sensor-item"><div> Saturation SpO2</div><div class="sensor-value spo2" id="s-spo2">--</div><span>%</span></div>
       </div>
     </div>
-    <div style="padding: 10px 20px;"><button class="btn btn-accent btn-sm" onclick="generateFHIR()">📄 Générer & Sauvegarder Ressource FHIR</button></div>
+    <div style="padding: 10px 20px;"><button class="btn btn-accent btn-sm" onclick="generateFHIR()">Générer & Sauvegarder Ressource FHIR</button></div>
     <div class="videos-container">
       <video id="remote-video" autoplay playsinline></video>
       <video id="local-video" autoplay muted playsinline></video>
     </div>
-    <div class="call-controls"><button class="ctrl-btn danger" onclick="endCall()">Ending 📵</button></div>
+    <div class="call-controls"><button class="ctrl-btn danger" onclick="endCall()">Ending </button></div>
   </div>
 
   <div id="incoming-call-overlay">
     <div class="incoming-call-box">
-      <h3>Appel Entrant 📹</h3><br>
+      <h3>Appel Entrant </h3><br>
       <p id="incoming-caller-name"></p><br>
       <button class="btn btn-accent" onclick="acceptCall()">Accepter</button>
       <button class="btn btn-danger" onclick="rejectCall()">Refuser</button>
@@ -319,7 +334,7 @@
 </div>
 
 <script>
-const STATE = { user: null, socket: null, peerConnection: null, localStream: null, currentCallId: null, peerSocketId: null, sensorInterval: null, callTimerInterval: null, callStartTime: null, selectedDoctorId: null, selectedDoctorName: null, lastFhirData: null };
+const STATE = { user: null, socket: null, peerConnection: null, localStream: null, currentCallId: null, peerSocketId: null, sensorInterval: null, callTimerInterval: null, callStartTime: null, selectedDoctorId: null, selectedDoctorName: null, lastFhirData: null, tempUserId: null };
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 window.addEventListener('load', () => {
@@ -351,24 +366,37 @@ async function loginUser() {
   try {
     const res = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, password}) });
     const data = await res.json();
-    if (!data.success) { document.getElementById('login-error').innerHTML = `<div class="alert alert-error">${data.message}</div>`; return; }
-    STATE.user = data.user;
-    initApp();
+    if (!res.ok) { document.getElementById('login-error').innerHTML = `<div class="alert alert-error">${data.message}</div>`; return; }
+    
+    // Si le serveur dit qu'un 2FA est requis
+    if (data.requires2FA) {
+        STATE.tempUserId = data.userId;
+        document.getElementById('login-stage-1').style.display = 'none';
+        document.getElementById('login-stage-2').style.display = 'block';
+    } else {
+        STATE.user = data.user;
+        initApp();
+    }
   } catch(e) { }
 }
 
-async function registerUser() {
-  const name = document.getElementById('reg-name').value.trim();
-  const email = document.getElementById('reg-email').value.trim();
-  const password = document.getElementById('reg-password').value;
-  const role = document.getElementById('reg-role').value;
-  const specialty = role==='medecin' ? document.getElementById('reg-specialty').value : undefined;
+async function submitAdmin2FA() {
+  const answer1 = document.getElementById('2fa-ans-1').value;
+  const answer2 = document.getElementById('2fa-ans-2').value;
+  const answer3 = document.getElementById('2fa-ans-3').value;
+
   try {
-    const res = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, email, password, role, specialty}) });
+    const res = await fetch('/api/login/verify-2fa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: STATE.tempUserId, answer1, answer2, answer3 })
+    });
     const data = await res.json();
-    if(!data.success) return;
-    switchAuthTab('login');
-  } catch(e){}
+    if (!res.ok) { alert(data.message || "Erreur de validation"); return; }
+    
+    STATE.user = data.user;
+    initApp();
+  } catch(e) {}
 }
 
 function logout() {
@@ -397,7 +425,6 @@ function initApp() {
     document.getElementById('doctor-greeting').textContent = STATE.user.name;
     loadDoctorAppointments();
   } else if (STATE.user.role === 'admin') {
-    // Activation Dashboard Admin Cyber
     document.getElementById('admin-dashboard').style.display = 'block';
     fetchAdminUsers();
     fetchAdminLogs();
@@ -416,7 +443,6 @@ function initSocket() {
   STATE.socket.on('webrtc:ready', (d) => { STATE.currentCallId = d.callId; STATE.peerSocketId = d.peerSocketId; });
   STATE.socket.on('call:ended', () => { closeCallView(); });
   
-  // Évènement de streaming Cyber-Log en temps réel (uniquement pour l'admin)
   STATE.socket.on('admin:new-log', (log) => {
     if(STATE.user && STATE.user.role === 'admin') {
         prependLogRow(log);
@@ -436,7 +462,6 @@ function initSocket() {
   STATE.socket.on('sensor:update', (d) => { if(d.heartRate) document.getElementById('s-hr').textContent = d.heartRate; if(d.temperature) document.getElementById('s-temp').textContent = d.temperature; if(d.spo2) document.getElementById('s-spo2').textContent = d.spo2; });
 }
 
-// --- FONCTIONS ADMIN CYBER (NEW) ---
 async function fetchAdminUsers() {
     const res = await fetch('/api/admin/users');
     const users = await res.json();
@@ -487,7 +512,6 @@ function createLogRowElement(log) {
     return tr;
 }
 
-// --- LOGIQUE PATIENT / MEDECIN ---
 async function loadDoctors() {
   const res = await fetch('/api/doctors'); const docs = await res.json();
   document.getElementById('doctors-list').innerHTML = docs.map(d => `<div class="doctor-card"><div><b>Dr. ${d.name}</b> (${d.specialty})</div><button class="btn btn-primary btn-sm" onclick="selectDoctor('${d.id}','${d.name}')">Choisir</button></div>`).join('');
@@ -516,7 +540,6 @@ function startConsultationDoc(apptId, patId, patName) { STATE.socket.emit('call:
 function acceptCall() { const d = STATE.pendingCallData; document.getElementById('incoming-call-overlay').classList.remove('active'); STATE.socket.emit('call:accept', { callId: d.callId, doctorId: d.doctorId, doctorName: d.doctorName, patientSocketId: d.fromSocketId }); showCallView(); STATE.pendingCallData = null; }
 function rejectCall() { const d = STATE.pendingCallData; if (d) STATE.socket.emit('call:reject', { callId: d.callId }); document.getElementById('incoming-call-overlay').classList.remove('active'); STATE.pendingCallData = null; }
 
-// --- WEBRTC CORE ---
 async function startCall(isInitiator) {
   try { STATE.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); document.getElementById('local-video').srcObject = STATE.localStream; } catch(e){}
   STATE.peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });

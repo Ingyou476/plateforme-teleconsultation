@@ -53,11 +53,16 @@ const activeSessions = new Map();
 // --- Système de Logs d'Audit (Cybersecurity Monitoring) ---
 const securityLogs = [];
 
-function logActivity(userId, username, role, action, status, details, req = null) {
+function logActivity(userId, username, role, action, status, details, reqOrSocket = null) {
     let ip = "0.0.0.0";
-    if (req) {
-        ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || "0.0.0.0";
+    if (reqOrSocket) {
+        if (reqOrSocket.handshake) {
+            ip = reqOrSocket.handshake.address || "0.0.0.0";
+        } else {
+            ip = reqOrSocket.headers['x-forwarded-for'] || reqOrSocket.socket.remoteAddress || "0.0.0.0";
+        }
         if (ip.substr(0, 7) == "::ffff:") ip = ip.substr(7); // Nettoyage IPv6
+        if (ip === "::1") ip = "127.0.0.1";
     }
     const logEntry = {
         id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -76,6 +81,13 @@ function logActivity(userId, username, role, action, status, details, req = null
     // Diffusion en direct aux administrateurs connectés
     io.to('role-admin').emit('admin:new-log', logEntry);
 }
+
+// --- Configuration des réponses 2FA Admin ---
+const ADMIN_2FA_ANSWERS = {
+    q1: "yaziz",
+    q2: "pure",
+    q3: "abon"
+};
 
 // ---------- Routes API ----------
 
@@ -123,7 +135,7 @@ app.post('/api/register', (req, res) => {
     res.json({ success: true, message: 'Inscription réussie' });
 });
 
-// CONNEXION
+// CONNEXION - ÉTAPE 1
 app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
     const user = users.find(u => u.email === email && u.password === password);
@@ -133,6 +145,39 @@ app.post('/api/login', (req, res) => {
         return res.status(401).json({ success: false, message: 'Identifiants invalides' });
     }
 
+    // Détection Admin pour enclencher le 2FA
+    if (user.role === 'admin') {
+        logActivity(user.id, user.name, user.role, '2FA_REQUIS', true, 'Première étape validée, en attente des questions secrètes', req);
+        return res.json({ success: true, requires2FA: true, userId: user.id });
+    }
+
+    completeLoginWorkflow(user, req, res);
+});
+
+// CONNEXION - ÉTAPE 2 (Validation Questions 2FA Admin)
+app.post('/api/login/verify-2fa', (req, res) => {
+    const { userId, answer1, answer2, answer3 } = req.body;
+    const user = users.find(u => u.id === userId);
+
+    if (!user || user.role !== 'admin') {
+        return res.status(400).json({ success: false, message: 'Requête invalide' });
+    }
+
+    const clean = (str) => String(str || '').trim().toLowerCase();
+
+    if (clean(answer1) === ADMIN_2FA_ANSWERS.q1 &&
+        clean(answer2) === ADMIN_2FA_ANSWERS.q2 &&
+        clean(answer3) === ADMIN_2FA_ANSWERS.q3) {
+        
+        logActivity(user.id, user.name, user.role, '2FA_SUCCESS', true, 'Double authentification validée avec succès', req);
+        completeLoginWorkflow(user, req, res);
+    } else {
+        logActivity(user.id, user.name, user.role, '2FA_FAILED', false, 'Échec validation 2FA : réponses fausses', req);
+        res.status(401).json({ success: false, message: 'Réponses secrètes incorrectes.' });
+    }
+});
+
+function completeLoginWorkflow(user, req, res) {
     const oldSocketId = activeSessions.get(user.id);
     if (oldSocketId) {
         const oldSocket = io.sockets.sockets.get(oldSocketId);
@@ -150,6 +195,7 @@ app.post('/api/login', (req, res) => {
     
     res.json({
         success: true,
+        requires2FA: false,
         user: {
             id: user.id,
             name: user.name,
@@ -158,7 +204,7 @@ app.post('/api/login', (req, res) => {
             doctorId: doctorInfo?.id || null
         }
     });
-});
+}
 
 // --- ROUTES APIS RESERVÉES ADMIN ---
 app.get('/api/admin/logs', (req, res) => {
@@ -166,7 +212,6 @@ app.get('/api/admin/logs', (req, res) => {
 });
 
 app.get('/api/admin/users', (req, res) => {
-    // Renvoie la liste sans les mots de passe par sécurité
     res.json(users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role })));
 });
 
@@ -337,12 +382,11 @@ io.on('connection', (socket) => {
         activeSessions.set(data.userId, socket.id);
         socket.join(`user-${data.userId}`);
         
-        // Si l'utilisateur est admin, on le joint à une room spéciale pour le streaming des logs
         if(data.role === 'admin') {
             socket.join('role-admin');
         }
         
-        logActivity(data.userId, data.userName, data.role, 'WS_CONNECT', true, 'Session socket en ligne');
+        logActivity(data.userId, data.userName, data.role, 'WS_CONNECT', true, 'Session socket en ligne', socket);
     });
 
     // APPEL
@@ -359,7 +403,7 @@ io.on('connection', (socket) => {
             callId, appointmentId, patientId, patientName, doctorId, doctorName, fromSocketId: socket.id
         });
         socket.emit('call:requested', { callId });
-        logActivity(socket.userId, socket.userName, socket.userRole, 'WEBRTC_CALL_INIT', true, `Initiation d'appel (ID: ${callId})`);
+        logActivity(socket.userId, socket.userName, socket.userRole, 'WEBRTC_CALL_INIT', true, `Initiation d'appel (ID: ${callId})`, socket);
     });
 
     socket.on('call:accept', (data) => {
@@ -372,7 +416,7 @@ io.on('connection', (socket) => {
             
             io.to(call.initiatorSocketId).emit('call:accepted', { callId, doctorId, doctorName, peerSocketId: socket.id });
             socket.emit('webrtc:ready', { callId, patientId: call.patientId, patientName: call.patientName, peerSocketId: call.initiatorSocketId });
-            logActivity(socket.userId, socket.userName, socket.userRole, 'WEBRTC_CALL_ACCEPT', true, `Appel accepté pour la session ${callId}`);
+            logActivity(socket.userId, socket.userName, socket.userRole, 'WEBRTC_CALL_ACCEPT', true, `Appel accepté pour la session ${callId}`, socket);
         }
     });
 
@@ -382,7 +426,7 @@ io.on('connection', (socket) => {
         if (call) {
             io.to(call.initiatorSocketId).emit('call:rejected', { callId });
             activeCalls.delete(callId);
-            logActivity(socket.userId, socket.userName, socket.userRole, 'WEBRTC_CALL_REJECT', true, `Appel refusé pour la session ${callId}`);
+            logActivity(socket.userId, socket.userName, socket.userRole, 'WEBRTC_CALL_REJECT', true, `Appel refusé pour la session ${callId}`, socket);
         }
     });
 
@@ -405,7 +449,7 @@ io.on('connection', (socket) => {
             if (call.initiatorSocketId) io.to(call.initiatorSocketId).emit('call:ended');
             if (call.acceptorSocketId) io.to(call.acceptorSocketId).emit('call:ended');
             activeCalls.delete(data.callId);
-            logActivity(socket.userId, socket.userName, socket.userRole, 'WEBRTC_CALL_END', true, `Fin de téléconsultation (Session ${data.callId})`);
+            logActivity(socket.userId, socket.userName, socket.userRole, 'WEBRTC_CALL_END', true, `Fin de téléconsultation (Session ${data.callId})`, socket);
         }
     });
 
@@ -420,7 +464,7 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         if (socket.userId) {
             activeSessions.delete(socket.userId);
-            logActivity(socket.userId, socket.userName, socket.userRole, 'WS_DISCONNECT', true, 'Session déconnectée');
+            logActivity(socket.userId, socket.userName, socket.userRole, 'WS_DISCONNECT', true, 'Session déconnectée', socket);
         }
     });
 });
@@ -438,7 +482,7 @@ function getLocalIp() {
 server.listen(PORT, '0.0.0.0', () => {
     const ip = getLocalIp();
     
-    // Injecter un compte administrateur par défaut au démarrage pour les tests de cybersécurité
+    // Injection du compte administrateur par défaut
     users.push({
         id: "admin-1337",
         name: "Cyber Admin",
@@ -448,6 +492,6 @@ server.listen(PORT, '0.0.0.0', () => {
     });
 
     console.log(`\n🔒 Serveur Securisé HTTPS démarré sur https://${ip}:${PORT}`);
-    console.log(`🛡️  Fonctionnalités Cyber: CSP, X-Frame-Options, HSTS & Audit Trail actifs.`);
+    console.log(`🛡️  Fonctionnalités Cyber: CSP, X-Frame-Options, HSTS, 2FA par Questions & Audit Trail actifs.`);
     console.log(`👤 Compte Admin Démo : admin@cyber.fr / admincyberpass\n`);
 });
