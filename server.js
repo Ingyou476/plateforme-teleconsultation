@@ -8,7 +8,6 @@ const os = require('os');
 const app = express();
 const PORT = 3443;
 
-// --- Chemins SSL (à adapter à ta VM) ---
 const SSL_KEY_PATH = '/home/iut/certs/192.168.23.129-key.pem';
 const SSL_CERT_PATH = '/home/iut/certs/192.168.23.129.pem';
 
@@ -16,10 +15,7 @@ if (!fs.existsSync(SSL_KEY_PATH) || !fs.existsSync(SSL_CERT_PATH)) {
     console.error('❌ Certificats SSL manquants. Générez-les avec mkcert');
     process.exit(1);
 }
-const credentials = {
-    key: fs.readFileSync(SSL_KEY_PATH),
-    cert: fs.readFileSync(SSL_CERT_PATH)
-};
+const credentials = { key: fs.readFileSync(SSL_KEY_PATH), cert: fs.readFileSync(SSL_CERT_PATH) };
 
 const server = https.createServer(credentials, app);
 const io = socketIo(server, { cors: { origin: "*" }, transports: ['websocket', 'polling'] });
@@ -28,21 +24,39 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- Base de données mémoire ----------
-const users = [];
+const users = [
+    // Compte admin pré-enregistré exigé
+    { id: "admin_root", name: "Administrateur", email: "admin@doctoline.fr", password: "invite", role: "admin" }
+];
 const doctors = [];
 const appointments = [];
 const consultationHistory = [];
+const auditLogs = []; // Stockage des actions "qui a fait quoi à quelle heure"
+
+// Fonction utilitaire pour enregistrer un log d'audit
+function logAction(actor, action) {
+    const logEntry = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
+        timestamp: new Date().toLocaleString('fr-FR'),
+        actor: actor,
+        action: action
+    };
+    auditLogs.push(logEntry);
+    io.emit('admin:new-log', logEntry); // Envoie le log en temps réel à l'admin connecté
+}
 
 // ---------- API ----------
 app.post('/api/register', (req, res) => {
     const { name, email, password, role, specialty } = req.body;
     if (users.find(u => u.email === email))
         return res.status(409).json({ success: false, message: 'Email déjà utilisé' });
+    
     const newUser = { id: Date.now().toString(), name, email, password, role };
     users.push(newUser);
     if (role === 'medecin') {
         doctors.push({ id: Date.now().toString(), userId: newUser.id, name, specialty });
     }
+    logAction(name, `Inscription en tant que [${role}]`);
     res.json({ success: true, message: 'Inscription réussie' });
 });
 
@@ -56,7 +70,36 @@ app.post('/api/login', (req, res) => {
         const doc = doctors.find(d => d.userId === user.id);
         doctorId = doc ? doc.id : null;
     }
+    logAction(user.name, "Connexion réussie");
     res.json({ success: true, user: { id: user.id, name: user.name, role: user.role, doctorId } });
+});
+
+// Admin : récupérer tous les utilisateurs
+app.get('/api/admin/users', (req, res) => {
+    res.json(users.filter(u => u.role !== 'admin'));
+});
+
+// Admin : récupérer tous les logs d'audit
+app.get('/api/admin/logs', (req, res) => {
+    res.json(auditLogs);
+});
+
+// Admin : supprimer un utilisateur
+app.delete('/api/admin/users/:id', (req, res) => {
+    const userId = req.params.id;
+    const userIdx = users.findIndex(u => u.id === userId);
+    if (userIdx !== -1) {
+        const userName = users[userIdx].name;
+        users.splice(userIdx, 1);
+        
+        // Nettoyer aussi si c'est un médecin
+        const docIdx = doctors.findIndex(d => d.userId === userId);
+        if (docIdx !== -1) doctors.splice(docIdx, 1);
+        
+        logAction("ADMIN", `Suppression définitive de l'utilisateur : ${userName}`);
+        return res.json({ success: true });
+    }
+    res.status(404).json({ success: false, message: "Utilisateur introuvable" });
 });
 
 app.get('/api/doctors', (req, res) => {
@@ -99,6 +142,7 @@ app.post('/api/appointments', (req, res) => {
     if (existing) return res.status(409).json({ success: false, message: 'Créneau déjà pris' });
     const newApp = { id: Date.now().toString(), patientId, patientName, doctorId, doctorName, start, end };
     appointments.push(newApp);
+    logAction(patientName, `Réservation de rendez-vous avec le Dr. ${doctorName}`);
     res.json({ success: true, appointment: newApp });
 });
 
@@ -112,12 +156,16 @@ app.get('/api/doctors/:doctorId/appointments', (req, res) => {
 
 app.delete('/api/appointments/:appointmentId', (req, res) => {
     const idx = appointments.findIndex(a => a.id === req.params.appointmentId);
-    if (idx !== -1) appointments.splice(idx, 1);
+    if (idx !== -1) {
+        logAction("Système/Patient", `Annulation du rendez-vous ID: ${req.params.appointmentId}`);
+        appointments.splice(idx, 1);
+    }
     res.json({ success: true });
 });
 
 app.post('/api/history', (req, res) => {
     consultationHistory.push(req.body);
+    logAction(req.body.patientName, `Consultation terminée et archivée (${req.body.avgBpm} BPM moyens)`);
     res.json({ success: true });
 });
 
@@ -125,7 +173,7 @@ app.get('/api/history', (req, res) => {
     res.json(consultationHistory);
 });
 
-// ---------- WebSocket (Signalisation & Messagerie) ----------
+// ---------- WebSocket ----------
 const activeCalls = new Map();
 
 io.on('connection', (socket) => {

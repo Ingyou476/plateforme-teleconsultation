@@ -32,6 +32,9 @@
         .success { color: #2a9d8f; background: #e0f2f1; padding: 10px; border-radius: 12px; margin-bottom: 12px; }
         .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .chat-box { height: 150px; overflow-y: auto; background: white; border: 1px solid #dee2e6; padding: 10px; border-radius: 12px; margin-bottom: 10px; text-align: left; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; border: 1px solid #dee2e6; text-align: left; }
+        th { background: #f1f3f5; }
     </style>
 </head>
 <body>
@@ -130,9 +133,11 @@
         currentUser = data.user;
         document.getElementById('authPanel').classList.add('hidden');
         document.getElementById('dashboard').classList.remove('hidden');
-        document.getElementById('userInfo').innerHTML = `<span>👋 ${currentUser.name} (${currentUser.role === 'patient' ? 'Patient' : 'Médecin'})</span> <button onclick="logout()">Déconnexion</button>`;
+        document.getElementById('userInfo').innerHTML = `<span>👋 ${currentUser.name} (${currentUser.role.toUpperCase()})</span> <button onclick="logout()">Déconnexion</button>`;
         initSocket();
-        if (currentUser.role === 'medecin') loadDoctorDashboard();
+        
+        if (currentUser.role === 'admin') loadAdminDashboard();
+        else if (currentUser.role === 'medecin') loadDoctorDashboard();
         else loadPatientDashboard();
     };
 
@@ -172,11 +177,20 @@
         socket.on('chat:message', (data) => {
             appendChatMessage(data.msg);
         });
+
+        // Temps réel Admin : réception directe des nouvelles actions
+        socket.on('admin:new-log', (log) => {
+            const tableBody = document.getElementById('auditLogsBody');
+            if(tableBody) {
+                const row = `<tr><td>${log.timestamp}</td><td><strong>${log.actor}</strong></td><td>${log.action}</td></tr>`;
+                tableBody.innerHTML = row + tableBody.innerHTML;
+            }
+        });
         
         socket.on('call:ended', () => cleanCallUI());
     }
 
-    // MÉTHODE DU COURS (Codelab / Loopback local) : Initialisation sécurisée
+    // CORRECTION CRITIQUE DU BUG : Rendu asynchrone sécurisé du conteneur vidéo
     async function startCall() {
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -192,12 +206,12 @@
                 } else throw new Error("dashboardContent introuvable");
             }
 
+            // 1. On injecte l'HTML d'abord
             container.innerHTML = `
                 <div class="video-container" style="margin-bottom:20px;">
                     <div><h3>Flux Local (Vous)</h3><video id="localVideo" autoplay muted playsinline style="max-width:300px"></video></div>
                     <div><h3>Flux Distant (Correspondant)</h3><video id="remoteVideo" autoplay playsinline style="max-width:300px"></video></div>
                 </div>
-                
                 <div class="card" style="border: 1px solid #ccc;">
                     <h3>💬 Messagerie de consultation</h3>
                     <div id="chatBox" class="chat-box"></div>
@@ -206,9 +220,7 @@
                         <button id="sendChatBtn" class="btn-success">Envoyer</button>
                     </div>
                 </div>
-
                 <div style="text-align:center; margin:16px 0;"><button class="btn-danger" id="hangupBtn">Terminer la consultation</button></div>
-                
                 <div class="flex">
                     <div class="sensor-card" style="flex:1; min-width:280px;">
                         <h3>📊 Télésurveillance (Simulation)</h3>
@@ -222,29 +234,26 @@
                 </div>
             `;
             
-            document.getElementById('hangupBtn').onclick = () => endCall();
-            
-            document.getElementById('sendChatBtn').onclick = () => {
-                const input = document.getElementById('chatInput');
-                if(!input.value) return;
-                const msg = { from: currentUser.name, text: input.value };
-                socket.emit('chat:message', { targetSocketId, msg });
-                appendChatMessage(msg);
-                input.value = '';
-            };
+            // 2. On attend une micro-seconde (Tick) que le DOM s'actualise pour éviter le bug de srcObject sur élément null
+            await new Promise(resolve => setTimeout(resolve, 50));
 
             const localVideo = document.getElementById('localVideo');
             const remoteVideo = document.getElementById('remoteVideo');
-            if (localVideo) localVideo.srcObject = localStream;
+            
+            if (!localVideo || !remoteVideo) {
+                throw new Error("Les éléments vidéo n'ont pas pu être initialisés dans le DOM.");
+            }
+
+            localVideo.srcObject = localStream;
 
             localPeerConnection = new RTCPeerConnection(ICE_CONFIG);
             remotePeerConnection = new RTCPeerConnection(ICE_CONFIG);
 
             localPeerConnection.onicecandidate = e => {
-                if (e.candidate) remotePeerConnection.addIceCandidate(e.candidate).catch(err => console.error(err));
+                if (e.candidate && remotePeerConnection) remotePeerConnection.addIceCandidate(e.candidate).catch(err => {});
             };
             remotePeerConnection.onicecandidate = e => {
-                if (e.candidate) localPeerConnection.addIceCandidate(e.candidate).catch(err => console.error(err));
+                if (e.candidate && localPeerConnection) localPeerConnection.addIceCandidate(e.candidate).catch(err => {});
             };
 
             remotePeerConnection.ontrack = e => {
@@ -261,10 +270,20 @@
             await remotePeerConnection.setLocalDescription(answer);
             await localPeerConnection.setRemoteDescription(answer);
 
+            document.getElementById('hangupBtn').onclick = () => endCall();
+            document.getElementById('sendChatBtn').onclick = () => {
+                const input = document.getElementById('chatInput');
+                if(!input.value) return;
+                const msg = { from: currentUser.name, text: input.value };
+                socket.emit('chat:message', { targetSocketId, msg });
+                appendChatMessage(msg);
+                input.value = '';
+            };
+
             startSensorSimulation();
         } catch (err) {
             console.error(err);
-            alert("Erreur d'initialisation média : " + err.message);
+            alert("Erreur critique WebRTC : " + err.message);
             cleanCallUI();
         }
     }
@@ -316,7 +335,6 @@
         cleanCallUI();
     }
 
-    // CORRECTION DU BUG : Sécurisation avec des vérifications conditionnelles (if)
     function closeMediaConnections() {
         if (sensorInterval) clearInterval(sensorInterval);
         if (localStream) {
@@ -340,7 +358,7 @@
         const area = document.getElementById('consultationArea');
         if (area) area.innerHTML = '';
         if (currentUser.role === 'medecin') loadDoctorDashboard();
-        else loadPatientDashboard();
+        else if (currentUser.role === 'patient') loadPatientDashboard();
     }
 
     function startSensorSimulation() {
@@ -368,6 +386,61 @@
         }, 3000);
     }
 
+    // ---------- PANNEAU ADMINISTRATEUR ----------
+    async function loadAdminDashboard() {
+        document.getElementById('dashboardContent').innerHTML = `
+            <h2>🛡️ Espace de Gestion & Audit Sécurisé</h2>
+            <div class="flex" style="align-items: flex-start;">
+                <div style="flex:1; min-width:350px;" class="sensor-card">
+                    <h3>👥 Liste et Suppression des Utilisateurs</h3>
+                    <div id="adminUsersList">Chargement...</div>
+                </div>
+                <div style="flex:2; min-width:450px;" class="sensor-card">
+                    <h3>🕒 Logs d'Audit et Activités Système</h3>
+                    <div style="max-height: 400px; overflow-y: auto; background:white; padding:10px; border-radius:12px;">
+                        <table>
+                            <thead>
+                                <tr><th>Heure exacte</th><th>Acteur</th><th>Action effectuée</th></tr>
+                            </thead>
+                            <tbody id="auditLogsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        refreshAdminUsers();
+        
+        // charger les logs existants
+        const resLogs = await fetch('/api/admin/logs');
+        const logs = await resLogs.json();
+        const tableBody = document.getElementById('auditLogsBody');
+        if(tableBody) {
+            tableBody.innerHTML = logs.reverse().map(l => `<tr><td>${l.timestamp}</td><td><strong>${l.actor}</strong></td><td>${l.action}</td></tr>`).join('');
+        }
+    }
+
+    async function refreshAdminUsers() {
+        const res = await fetch('/api/admin/users');
+        const users = await res.json();
+        const div = document.getElementById('adminUsersList');
+        if(div) {
+            if(!users.length) { div.innerHTML = "<p>Aucun utilisateur inscrit.</p>"; return; }
+            div.innerHTML = users.map(u => `
+                <div class="slot" style="background:white;">
+                    <div><strong>${u.name}</strong> (${u.email}) <br><small style="color:gray;">Rôle: ${u.role.toUpperCase()}</small></div>
+                    <button class="btn-danger" onclick="deleteUserByAdmin('${u.id}')">Supprimer</button>
+                </div>
+            `).join('');
+        }
+    }
+
+    window.deleteUserByAdmin = async (id) => {
+        if(confirm("Confirmer la suppression définitive de cet utilisateur ?")) {
+            await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+            refreshAdminUsers();
+        }
+    }
+
     // ---------- Médecin ----------
     async function loadDoctorDashboard() {
         const res = await fetch(`/api/doctors/${currentUser.doctorId}/appointments`);
@@ -378,7 +451,7 @@
             <div id="appointmentsList"></div>
             <div id="consultationArea"></div>
             <div class="card" style="margin-top:20px;">
-                <h3>📜 Suivi global de télésurveillance (Historique des consultations)</h3>
+                <h3>📜 Suivi global de télésurveillance</h3>
                 <div id="historyList">Chargement...</div>
             </div>
         `;
