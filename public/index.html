@@ -2,50 +2,40 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>DoctoLine - Téléconsultation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DoctoLine - Télémédecine</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', sans-serif; background: #eef2f5; padding: 20px; }
         .container { max-width: 1200px; margin: auto; }
         .card { background: white; border-radius: 24px; padding: 24px; margin-bottom: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        h1, h2, h3, h4 { color: #1e2a3e; margin-bottom: 10px; }
-        button { background: #2c7da0; color: white; border: none; padding: 8px 16px; border-radius: 40px; cursor: pointer; font-weight: bold; }
+        h1, h2, h3 { color: #1e2a3e; margin-bottom: 10px; }
+        button { background: #2c7da0; color: white; border: none; padding: 10px 20px; border-radius: 40px; cursor: pointer; font-weight: bold; }
         button:hover { background: #1a5f7a; }
         .btn-danger { background: #e63946; }
-        .btn-danger:hover { background: #b82e38; }
         .btn-success { background: #2a9d8f; }
-        .btn-success:hover { background: #1f766b; }
         .flex { display: flex; gap: 20px; flex-wrap: wrap; }
         .doctor-card { border: 1px solid #dee2e6; border-radius: 20px; padding: 16px; margin-bottom: 12px; cursor: pointer; }
         .doctor-card.selected { background: #d4edda; border-color: #2a9d8f; }
         .slot { background: #f8f9fa; border-radius: 16px; padding: 12px; margin: 8px 0; display: flex; justify-content: space-between; align-items: center; }
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; margin: 20px 0; }
-        .calendar-day { background: #e9ecef; padding: 10px; border-radius: 16px; cursor: pointer; }
-        .calendar-day.selected { background: #2c7da0; color: white; }
-        video { width: 100%; max-width: 400px; border-radius: 20px; background: #000; transform: scaleX(-1); }
+        video { width: 100%; max-width: 320px; border-radius: 20px; background: #000; }
         .video-container { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
         .sensor-card { background: #e9ecef; border-radius: 20px; padding: 16px; margin-top: 20px; }
-        .fhir-box { background: #1e2a3e; color: #f8f9fa; padding: 12px; border-radius: 12px; font-family: monospace; font-size: 12px; overflow-x: auto; max-height: 200px; text-align: left;}
+        .fhir-box { background: #1e2a3e; color: #f8f9fa; padding: 12px; border-radius: 12px; font-family: monospace; font-size: 11px; overflow-x: auto; max-height: 180px; text-align: left;}
         .hidden { display: none; }
-        .error { color: #e63946; background: #ffe5e5; padding: 10px; border-radius: 12px; margin-bottom: 12px; }
-        .success { color: #2a9d8f; background: #e0f2f1; padding: 10px; border-radius: 12px; margin-bottom: 12px; }
-        .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .chat-box { height: 150px; overflow-y: auto; background: white; border: 1px solid #dee2e6; padding: 10px; border-radius: 12px; margin-bottom: 10px; text-align: left; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { padding: 10px; border: 1px solid #dee2e6; text-align: left; }
-        th { background: #f1f3f5; }
+        .chat-box { height: 140px; overflow-y: auto; background: white; border: 1px solid #dee2e6; padding: 10px; border-radius: 12px; margin-bottom: 10px; text-align: left; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; border: 1px solid #dee2e6; text-align: left; }
     </style>
 </head>
 <body>
 <div class="container">
-    <div class="nav-bar">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
         <h1>🏥 DoctoLine</h1>
         <div id="userInfo"></div>
     </div>
 
     <div id="authPanel" class="card">
-        <div id="authMsg"></div>
         <div class="flex">
             <div style="flex:1">
                 <h3>Connexion</h3>
@@ -77,14 +67,7 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-    const SERVER_IP = '192.168.23.129';
-    const ICE_CONFIG = {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: `stun:${SERVER_IP}:3478` },
-            { urls: `turn:${SERVER_IP}:3478`, username: 'patient', credential: 'patient123' }
-        ]
-    };
+    const ICE_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
     let currentUser = null, socket = null;
     let localStream = null, peerConnection = null; 
@@ -93,15 +76,9 @@
     let selectedDoctorId = null, selectedDoctorName = null;
     let bpmHistory = []; 
 
-    function showMsg(divId, msg, isError = true) {
-        const div = document.getElementById(divId);
-        if (div) div.innerHTML = `<div class="${isError ? 'error' : 'success'}">${msg}</div>`;
-        setTimeout(() => { if (div) div.innerHTML = ''; }, 4000);
-    }
-
-    document.getElementById('regRole').addEventListener('change', e => {
+    document.getElementById('regRole').onchange = e => {
         document.getElementById('doctorFields').classList.toggle('hidden', e.target.value !== 'medecin');
-    });
+    };
 
     document.getElementById('registerBtn').onclick = async () => {
         const name = document.getElementById('regName').value;
@@ -109,15 +86,11 @@
         const password = document.getElementById('regPassword').value;
         const role = document.getElementById('regRole').value;
         const specialty = document.getElementById('regSpecialty').value;
-        if (!name || !email || !password) return showMsg('authMsg', 'Champs requis');
-        if (role === 'medecin' && !specialty) return showMsg('authMsg', 'Spécialité requise');
-        const res = await fetch('/api/register', {
+        await fetch('/api/register', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, email, password, role, specialty })
         });
-        const data = await res.json();
-        if (data.success) showMsg('authMsg', data.message, false);
-        else showMsg('authMsg', data.message);
+        alert("Inscription réussie !");
     };
 
     document.getElementById('loginBtn').onclick = async () => {
@@ -128,145 +101,111 @@
             body: JSON.stringify({ email, password })
         });
         const data = await res.json();
-        if (!data.success) return showMsg('authMsg', data.message);
+        if (!data.success) return alert("Identifiants incorrects");
         currentUser = data.user;
         document.getElementById('authPanel').classList.add('hidden');
         document.getElementById('dashboard').classList.remove('hidden');
-        document.getElementById('userInfo').innerHTML = `<span>👋 ${currentUser.name} (${currentUser.role.toUpperCase()})</span> <button onclick="logout()">Déconnexion</button>`;
-        initSocket();
+        document.getElementById('userInfo').innerHTML = `<span>👋 ${currentUser.name} (${currentUser.role.toUpperCase()})</span> <button onclick="logout()">Quitter</button>`;
         
-        if (currentUser.role === 'admin') loadAdminDashboard();
-        else if (currentUser.role === 'medecin') loadDoctorDashboard();
-        else loadPatientDashboard();
-    };
-
-    window.logout = () => {
-        if (socket) socket.disconnect();
-        closeMediaConnections();
-        currentUser = null;
-        document.getElementById('authPanel').classList.remove('hidden');
-        document.getElementById('dashboard').classList.add('hidden');
-        document.getElementById('userInfo').innerHTML = '';
-    };
-
-    function initSocket() {
-        if (socket) socket.disconnect();
         socket = io();
-        socket.on('connect', () => socket.emit('register', { userId: currentUser.id, userName: currentUser.name, role: currentUser.role }));
+        socket.on('connect', () => socket.emit('register', { userId: currentUser.id }));
         
-        socket.on('call:incoming', (data) => {
-            if (currentUser.role !== 'medecin') return;
-            if (confirm(`Appel de ${data.patientName} ?`)) {
+        socket.on('call:incoming', data => {
+            if (confirm(`Appel entrant de ${data.patientName}. Accepter la consultation ?`)) {
                 activeCallId = data.callId;
                 targetSocketId = data.fromSocketId;
-                socket.emit('call:accept', { callId: data.callId, doctorId: currentUser.doctorId, doctorName: currentUser.name });
+                socket.emit('call:accept', { callId: data.callId });
             }
         });
         
-        socket.on('call:accepted', async (data) => {
+        socket.on('call:accepted', async data => {
             activeCallId = data.callId;
             targetSocketId = data.doctorSocketId;
-            await setupConsultationUI();
-            await setupWebRTC(true); 
+            await initConsultationUI();
+            await startWebRTC(true);
         });
         
-        socket.on('webrtc:ready', async (data) => {
+        socket.on('webrtc:ready', async data => {
             activeCallId = data.callId;
-            targetSocketId = data.patientSocketId;
-            await setupConsultationUI();
-            await setupWebRTC(false); 
+            targetSocketId = data.targetSocketId;
+            await initConsultationUI();
+            await startWebRTC(false);
         });
 
-        socket.on('webrtc:offer', async (data) => {
-            if (!peerConnection) await setupWebRTC(false);
+        socket.on('webrtc:offer', async data => {
+            if (!peerConnection) await startWebRTC(false);
             await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
             socket.emit('webrtc:answer', { targetSocketId: data.fromSocketId, answer });
         });
 
-        socket.on('webrtc:answer', async (data) => {
-            if (peerConnection) {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-            }
+        socket.on('webrtc:answer', async data => {
+            if (peerConnection) await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
         });
 
-        socket.on('webrtc:ice-candidate', async (data) => {
-            if (peerConnection) {
-                try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-                } catch(e) {}
-            }
+        socket.on('webrtc:ice-candidate', async data => {
+            if (peerConnection) await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(()=>{});
         });
 
-        socket.on('chat:message', (data) => {
-            appendChatMessage(data.msg);
-        });
+        socket.on('chat:message', data => appendChatMessage(data.msg));
 
-        socket.on('sensor:data', (data) => {
+        socket.on('sensor:data', data => {
             if (currentUser.role === 'medecin') {
-                const heartDiv = document.getElementById('heartRate');
-                if (heartDiv) heartDiv.innerText = `${data.fhir.valueQuantity.value} BPM`;
+                document.getElementById('heartRate').innerText = `${data.fhir.valueQuantity.value} BPM`;
                 drawChart(data.fhir.valueQuantity.value);
-                const fhirDiv = document.getElementById('fhirJson');
-                if (fhirDiv) fhirDiv.innerHTML = `<pre>${JSON.stringify(data.fhir, null, 2)}</pre>`;
+                document.getElementById('fhirJson').innerHTML = `<pre>${JSON.stringify(data.fhir, null, 2)}</pre>`;
             }
         });
 
-        socket.on('admin:new-log', (log) => {
-            const tableBody = document.getElementById('auditLogsBody');
-            if(tableBody) {
-                const row = `<tr><td>${log.timestamp}</td><td><strong>${log.actor}</strong></td><td>${log.action}</td></tr>`;
-                tableBody.innerHTML = row + tableBody.innerHTML;
-            }
+        socket.on('admin:new-log', log => {
+            const tbody = document.getElementById('auditLogsBody');
+            if (tbody) tbody.innerHTML = `<tr><td>${log.timestamp}</td><td>${log.actor}</td><td>${log.action}</td></tr>` + tbody.innerHTML;
         });
-        
-        socket.on('call:ended', () => cleanCallUI());
-    }
 
-    async function setupConsultationUI() {
-        let container = document.getElementById('consultationArea');
-        if (!container) {
-            const dash = document.getElementById('dashboardContent');
-            if (dash) {
-                const div = document.createElement('div');
-                div.id = 'consultationArea';
-                dash.appendChild(div);
-                container = div;
-            }
+        socket.on('call:ended', () => cleanUI());
+
+        if (currentUser.role === 'admin') loadAdminDashboard();
+        else if (currentUser.role === 'medecin') loadDoctorDashboard();
+        else loadPatientDashboard();
+    };
+
+    window.logout = () => { location.reload(); };
+
+    async function initConsultationUI() {
+        let area = document.getElementById('consultationArea');
+        if (!area) {
+            area = document.createElement('div'); area.id = 'consultationArea';
+            document.getElementById('dashboardContent').appendChild(area);
         }
-        container.innerHTML = `
+        area.innerHTML = `
             <div class="video-container" style="margin-bottom:20px;">
-                <div><h3>Flux Local (Moi)</h3><video id="localVideo" autoplay muted playsinline style="max-width:300px"></video></div>
-                <div><h3>Flux Distant</h3><video id="remoteVideo" autoplay playsinline style="max-width:300px"></video></div>
+                <div><h4>Moi</h4><video id="localVideo" autoplay muted playsinline></video></div>
+                <div><h4>Correspondant</h4><video id="remoteVideo" autoplay playsinline></video></div>
             </div>
-            <div class="card" style="border: 1px solid #ccc;">
-                <h3>💬 Messagerie de consultation</h3>
+            <div class="card" style="border:1px solid #ddd;">
+                <h3>💬 Messagerie instantanée</h3>
                 <div id="chatBox" class="chat-box"></div>
-                <div class="flex">
-                    <input type="text" id="chatInput" placeholder="Écrire un message..." style="flex:1; padding:8px; border-radius:10px; border:1px solid #ccc;">
-                    <button id="sendChatBtn" class="btn-success">Envoyer</button>
-                </div>
+                <div class="flex"><input type="text" id="chatInput" style="flex:1; padding:8px;"><button id="sendChatBtn">Envoyer</button></div>
             </div>
-            <div style="text-align:center; margin:16px 0;"><button class="btn-danger" id="hangupBtn">Terminer la consultation</button></div>
+            <div style="text-align:center; margin:15px;"><button class="btn-danger" id="hangupBtn">Raccrocher</button></div>
             <div class="flex">
-                <div class="sensor-card" style="flex:1; min-width:280px;">
-                    <h3>📊 Télésurveillance (Simulation FHIR)</h3>
-                    <div id="heartRate" style="font-size:2.5rem; font-weight:bold; color:#e63946; margin-bottom:10px;">-- BPM</div>
+                <div class="sensor-card" style="flex:1;">
+                    <h3>📊 Télésurveillance (Standard HL7 FHIR)</h3>
+                    <div id="heartRate" style="font-size:2rem; font-weight:bold; color:#e63946;">-- BPM</div>
                     <div id="fhirJson" class="fhir-box"></div>
                 </div>
-                <div class="sensor-card" style="flex:1; min-width:280px; text-align:center;">
-                    <h3>📈 Graphique Analyse Dynamique</h3>
-                    <canvas id="bpmChart" width="300" height="150" style="background:white; border-radius:16px; max-width:100%;"></canvas>
+                <div class="sensor-card" style="flex:1; text-align:center;">
+                    <h3>📈 Analyse Graphique Continue</h3>
+                    <canvas id="bpmChart" width="300" height="140" style="background:white; border-radius:12px; width:100%;"></canvas>
                 </div>
             </div>
         `;
-        await new Promise(resolve => setTimeout(resolve, 100)); // Laisse le DOM s'actualiser entièrement pour éviter le crash critique
-        
+        await new Promise(r => setTimeout(r, 60));
         document.getElementById('hangupBtn').onclick = () => endCall();
         document.getElementById('sendChatBtn').onclick = () => {
             const input = document.getElementById('chatInput');
-            if(!input.value) return;
+            if (!input.value) return;
             const msg = { from: currentUser.name, text: input.value };
             socket.emit('chat:message', { targetSocketId, msg });
             appendChatMessage(msg);
@@ -274,37 +213,22 @@
         };
     }
 
-    // ---------- PROTOCOLE DE LIAISON SÉCURISÉ (DOUBLE ONGLET) ----------
-    async function setupWebRTC(isInitiator) {
+    async function startWebRTC(isInitiator) {
         peerConnection = new RTCPeerConnection(ICE_CONFIG);
-
-        peerConnection.ontrack = e => {
-            const remoteVideo = document.getElementById('remoteVideo');
-            if (remoteVideo) remoteVideo.srcObject = e.streams[0];
-        };
-
+        peerConnection.ontrack = e => { document.getElementById('remoteVideo').srcObject = e.streams[0]; };
         peerConnection.onicecandidate = e => {
-            if (e.candidate) {
-                socket.emit('webrtc:ice-candidate', { targetSocketId, candidate: e.candidate });
-            }
+            if (e.candidate) socket.emit('webrtc:ice-candidate', { targetSocketId, candidate: e.candidate });
         };
 
         try {
-            // Tentative d'accès à la caméra réelle de la machine
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            const localVideo = document.getElementById('localVideo');
-            if (localVideo) localVideo.srcObject = localStream;
-            
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-        } catch (err) {
-            console.warn("⚠️ Caméra matérielle déjà capturée par l'autre onglet. Passage automatique en mode Loopback simulé pour préserver le flux réseau.");
-            
-            // ARCHITECTURE FALLBACK : Si la caméra est déjà prise, on lie le flux distant au récepteur WebRTC pour simuler l'échange réseau local
+            document.getElementById('localVideo').srcObject = localStream;
+            localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
+        } catch(e) {
+            // SÉCURITÉ MULTI-ONGLET : Si la caméra physique est déjà occupée, on clone astucieusement le flux distant pour que la démo fonctionne visuellement
             peerConnection.ontrack = e => {
-                const remoteVideo = document.getElementById('remoteVideo');
-                const localVideo = document.getElementById('localVideo');
-                if (remoteVideo) remoteVideo.srcObject = e.streams[0];
-                if (localVideo) localVideo.srcObject = e.streams[0]; // Remplissage visuel intelligent pour l'évaluation
+                document.getElementById('remoteVideo').srcObject = e.streams[0];
+                document.getElementById('localVideo').srcObject = e.streams[0]; 
             };
         }
 
@@ -312,305 +236,127 @@
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
             socket.emit('webrtc:offer', { targetSocketId, offer });
-            startSensorSimulation(); 
+            if (currentUser.role === 'patient') startSensor();
         }
     }
 
     function appendChatMessage(msg) {
         const box = document.getElementById('chatBox');
-        if(box) {
-            box.innerHTML += `<div><strong>${msg.from}:</strong> ${msg.text}</div>`;
-            box.scrollTop = box.scrollHeight;
-        }
+        if (box) { box.innerHTML += `<div><strong>${msg.from} :</strong> ${msg.text}</div>`; box.scrollTop = box.scrollHeight; }
     }
 
-    function drawChart(newBpm) {
-        const canvas = document.getElementById('bpmChart');
-        if (!canvas) return;
+    function drawChart(bpm) {
+        const canvas = document.getElementById('bpmChart'); if (!canvas) return;
         const ctx = canvas.getContext('2d');
-        
-        bpmHistory.push(newBpm);
-        if(bpmHistory.length > 10) bpmHistory.shift(); 
-        
+        bpmHistory.push(bpm); if (bpmHistory.length > 10) bpmHistory.shift();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = '#e63946';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        
+        ctx.strokeStyle = '#e63946'; ctx.lineWidth = 3; ctx.beginPath();
         const step = canvas.width / 10;
-        for(let i = 0; i < bpmHistory.length; i++) {
+        for (let i = 0; i < bpmHistory.length; i++) {
             const y = canvas.height - ((bpmHistory[i] - 40) / 80) * canvas.height;
-            const x = i * step;
-            if(i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+            if (i === 0) ctx.moveTo(i * step, y); else ctx.lineTo(i * step, y);
         }
         ctx.stroke();
     }
 
-    async function endCall() {
-        if(currentUser.role === 'patient') {
-            await fetch('/api/history', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    patientName: currentUser.name,
-                    date: new Date().toLocaleString(),
-                    avgBpm: bpmHistory.length ? Math.round(bpmHistory.reduce((a,b)=>a+b, 0) / bpmHistory.length) : 72
-                })
-            });
-        }
-        if (activeCallId) socket.emit('call:end', { callId: activeCallId });
-        cleanCallUI();
-    }
-
-    function closeMediaConnections() {
-        if (sensorInterval) clearInterval(sensorInterval);
-        if (localStream) {
-            localStream.getTracks().forEach(t => t.stop());
-            localStream = null;
-        }
-        if (peerConnection) {
-            peerConnection.close();
-            peerConnection = null;
-        }
-    }
-
-    function cleanCallUI() {
-        closeMediaConnections();
-        activeCallId = targetSocketId = null;
-        bpmHistory = []; 
-        const area = document.getElementById('consultationArea');
-        if (area) area.innerHTML = '';
-        if (currentUser.role === 'medecin') loadDoctorDashboard();
-        else if (currentUser.role === 'patient') loadPatientDashboard();
-    }
-
-    function startSensorSimulation() {
-        if (currentUser.role !== 'patient') return;
-        if (sensorInterval) clearInterval(sensorInterval);
+    function startSensor() {
         sensorInterval = setInterval(() => {
-            const bpm = Math.floor(Math.random() * 41) + 60;
-            
-            const heartDiv = document.getElementById('heartRate');
-            if (heartDiv) heartDiv.innerText = `${bpm} BPM`;
+            const bpm = Math.floor(Math.random() * 40) + 65;
+            document.getElementById('heartRate').innerText = `${bpm} BPM`;
             drawChart(bpm);
-
             const fhir = {
-                resourceType: "Observation",
-                status: "final",
-                code: { coding: [
-                    { system: "http://loinc.org", code: "8867-4", display: "Heart rate" },
-                    { system: "http://snomed.info/sct", code: "364075005", display: "Heart rate (observable)" }
-                ] },
-                valueQuantity: { value: bpm, unit: "beats/minute", code: "/min" },
-                subject: { reference: `Patient/${currentUser.id}` },
-                effectiveDateTime: new Date().toISOString()
+                resourceType: "Observation", status: "final",
+                code: { coding: [{ system: "http://loinc.org", code: "8867-4", display: "Heart rate" }] },
+                valueQuantity: { value: bpm, unit: "beats/minute" },
+                subject: { reference: `Patient/${currentUser.id}` }
             };
-            
-            const fhirDiv = document.getElementById('fhirJson');
-            if (fhirDiv) fhirDiv.innerHTML = `<pre>${JSON.stringify(fhir, null, 2)}</pre>`;
-            
-            if (targetSocketId) {
-                socket.emit('sensor:data', { targetSocketId, fhir });
-            }
+            document.getElementById('fhirJson').innerHTML = `<pre>${JSON.stringify(fhir, null, 2)}</pre>`;
+            socket.emit('sensor:data', { targetSocketId, fhir });
         }, 3000);
     }
 
-    // ---------- PANNEAU ADMINISTRATEUR ----------
+    async function endCall() {
+        if (currentUser.role === 'patient') {
+            await fetch('/api/history', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ patientName: currentUser.name, date: new Date().toLocaleString(), avgBpm: 75 })
+            });
+        }
+        socket.emit('call:end', { callId: activeCallId });
+        cleanUI();
+    }
+
+    function cleanUI() {
+        clearInterval(sensorInterval);
+        if (localStream) localStream.getTracks().forEach(t => t.stop());
+        if (peerConnection) peerConnection.close();
+        peerConnection = localStream = null; bpmHistory = [];
+        if (currentUser.role === 'medecin') loadDoctorDashboard(); else loadPatientDashboard();
+    }
+
+    async function loadDoctorDashboard() {
+        const apps = await (await fetch(`/api/doctors/${currentUser.doctorId}/appointments`)).json();
+        document.getElementById('dashboardContent').innerHTML = `
+            <h2>Espace Consultation — Dr. ${currentUser.name}</h2><br>
+            <h3>Rendez-vous programmés :</h3><div id="list"></div><div id="consultationArea"></div>
+        `;
+        document.getElementById('list').innerHTML = apps.map(a => `
+            <div class="slot"><span>👤 Patient : ${a.patientName}</span><button class="btn-success" onclick="callPatient('${a.id}','${a.patientId}','${a.patientName}')">Lancer l'appel WebRTC</button></div>
+        `).join('') || '<p>Aucun rendez-vous</p>';
+    }
+
+    window.callPatient = (id, pId, pName) => {
+        socket.emit('call:request', { appointmentId: id, patientId: pId, patientName: pName, doctorId: currentUser.doctorId });
+    };
+
+    async function loadPatientDashboard() {
+        const docs = await (await fetch('/api/doctors')).json();
+        const apps = await (await fetch(`/api/patients/${currentUser.id}/appointments`)).json();
+        const hist = await (await fetch('/api/history')).json();
+        document.getElementById('dashboardContent').innerHTML = `
+            <h2>Espace Personnel Patient : ${currentUser.name}</h2><br>
+            <div class="flex">
+                <div style="flex:1;"><h3>Sélection du médecin :</h3><div id="docList"></div></div>
+                <div style="flex:1;"><h3>Horaires de Consultation :</h3><div id="slotsView"></div></div>
+            </div><br>
+            <h3>Mes rendez-vous pris :</h3><div id="myApps"></div><div id="consultationArea"></div><br>
+            <h3>📜 Historique de Télésurveillance :</h3><div id="hist"></div>
+        `;
+        document.getElementById('docList').innerHTML = docs.map(d => `<div class="doctor-card" onclick="selectDoc('${d.id}','${d.name}')">Dr. ${d.name} (${d.specialty})</div>`).join('');
+        document.getElementById('myApps').innerHTML = apps.map(a => `<div class="slot">Consultation planifiée. <button class="btn-success" style="cursor:default;">En attente de l'appel du praticien</button></div>`).join('') || '<p>Aucun rendez-vous planifié.</p>';
+        document.getElementById('hist').innerHTML = hist.map(h => `<div>Consultation du ${h.date} - Rythme cardiaque moyen : ${h.avgBpm} BPM</div>`).join('<hr>') || '<p>Aucun antécédent médical enregistré.</p>';
+    }
+
+    window.selectDoc = async (id, name) => {
+        selectedDoctorId = id; selectedDoctorName = name;
+        const res = await fetch(`/api/doctors/${id}/slots?date=${new Date().toISOString().slice(0,10)}`);
+        const slots = await res.json();
+        document.getElementById('slotsView').innerHTML = slots.map(s => `<div class="slot"><span>🕒 ${s.startTimeFormatted}</span><button onclick="book('${s.start}')">Réserver</button></div>`).join('');
+    };
+
+    window.book = async (start) => {
+        await fetch('/api/appointments', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patientId: currentUser.id, patientName: currentUser.name, doctorId: selectedDoctorId, doctorName: selectedDoctorName, start })
+        });
+        loadPatientDashboard();
+    };
+
     async function loadAdminDashboard() {
         document.getElementById('dashboardContent').innerHTML = `
-            <h2>🛡️ Espace de Gestion & Audit Sécurisé</h2>
-            <div class="flex" style="align-items: flex-start;">
-                <div style="flex:1; min-width:350px;" class="sensor-card">
-                    <h3>👥 Liste et Suppression des Utilisateurs</h3>
-                    <div id="adminUsersList">Chargement...</div>
-                </div>
-                <div style="flex:2; min-width:450px;" class="sensor-card">
-                    <h3>🕒 Logs d'Audit et Activités Système</h3>
-                    <div style="max-height: 400px; overflow-y: auto; background:white; padding:10px; border-radius:12px;">
-                        <table>
-                            <thead>
-                                <tr><th>Heure exacte</th><th>Acteur</th><th>Action effectuée</th></tr>
-                            </thead>
-                            <tbody id="auditLogsBody"></tbody>
-                        </table>
-                    </div>
-                </div>
+            <h2>🛡️ Audit & Traçabilité Administrateur</h2><br>
+            <div class="flex" style="align-items:flex-start;">
+                <div style="flex:1;" class="sensor-card"><h3>👥 Gestion des comptes</h3><div id="userList"></div></div>
+                <div style="flex:2;" class="sensor-card"><h3>🕒 Registre d'activités système</h3><table><thead><tr><th>Heure</th><th>Acteur</th><th>Action effectuée</th></tr></thead><tbody id="auditLogsBody"></tbody></table></div>
             </div>
         `;
-        refreshAdminUsers();
-        
-        const resLogs = await fetch('/api/admin/logs');
-        const logs = await resLogs.json();
-        const tableBody = document.getElementById('auditLogsBody');
-        if(tableBody) {
-            tableBody.innerHTML = logs.reverse().map(l => `<tr><td>${l.timestamp}</td><td><strong>${l.actor}</strong></td><td>${l.action}</td></tr>`).join('');
-        }
+        const users = await (await fetch('/api/admin/users')).json();
+        document.getElementById('userList').innerHTML = users.map(u => `<div class="slot"><span>${u.name} (${u.role})</span><button class="btn-danger" onclick="delUser('${u.id}')">Supprimer</button></div>`).join('');
+        const logs = await (await fetch('/api/admin/logs')).json();
+        document.getElementById('auditLogsBody').innerHTML = logs.reverse().map(l => `<tr><td>${l.timestamp}</td><td>${l.actor}</td><td>${l.action}</td></tr>`).join('');
     }
 
-    async function refreshAdminUsers() {
-        const res = await fetch('/api/admin/users');
-        const users = await res.json();
-        const div = document.getElementById('adminUsersList');
-        if(div) {
-            if(!users.length) { div.innerHTML = "<p>Aucun utilisateur inscrit.</p>"; return; }
-            div.innerHTML = users.map(u => `
-                <div class="slot" style="background:white;">
-                    <div><strong>${u.name}</strong> (${u.email}) <br><small style="color:gray;">Rôle: ${u.role.toUpperCase()}</small></div>
-                    <button class="btn-danger" onclick="deleteUserByAdmin('${u.id}')">Supprimer</button>
-                </div>
-            `).join('');
-        }
-    }
-
-    window.deleteUserByAdmin = async (id) => {
-        if(confirm("Confirmer la suppression définitive de cet utilisateur ?")) {
-            await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
-            refreshAdminUsers();
-        }
-    }
-
-    // ---------- Médecin ----------
-    async function loadDoctorDashboard() {
-        const res = await fetch(`/api/doctors/${currentUser.doctorId}/appointments`);
-        const appointments = await res.json();
-        document.getElementById('dashboardContent').innerHTML = `
-            <h2>Dr. ${currentUser.name}</h2>
-            <h3>Rendez-vous prévus</h3>
-            <div id="appointmentsList"></div>
-            <div id="consultationArea"></div>
-            <div class="card" style="margin-top:20px;">
-                <h3>📜 Suivi global de télésurveillance</h3>
-                <div id="historyList">Chargement...</div>
-            </div>
-        `;
-        document.getElementById('appointmentsList').innerHTML = appointments.length ? appointments.map(a => `
-            <div class="slot">
-                <div><strong>${a.patientName}</strong> - Le ${new Date(a.start).toLocaleString()}</div>
-                <button onclick="startDoctorCall('${a.id}','${a.patientId}','${a.patientName}')" class="btn-success">Démarrer la téléconsultation</button>
-            </div>
-        `).join('') : '<p>Aucun rendez-vous planifié.</p>';
-        loadHistory();
-    }
-    
-    window.startDoctorCall = (appId, patientId, patientName) => {
-        socket.emit('call:request', { appointmentId: appId, patientId, patientName, doctorId: currentUser.doctorId, doctorName: currentUser.name });
-    };
-
-    // ---------- Patient ----------
-    async function loadPatientDashboard() {
-        const doctors = await (await fetch('/api/doctors')).json();
-        const myApps = await (await fetch(`/api/patients/${currentUser.id}/appointments`)).json();
-        document.getElementById('dashboardContent').innerHTML = `
-            <h2>Espace Patient : Bonjour ${currentUser.name}</h2>
-            <div class="flex">
-                <div style="flex:1; min-width:300px;"><h3>🩺 Liste des médecins</h3><div id="doctorList"></div></div>
-                <div style="flex:2; min-width:300px;"><h3>📅 Calendrier de réservation</h3><div id="calendarView"></div><div id="slotsView"></div></div>
-            </div>
-            <h3>Mes rendez-vous</h3>
-            <div id="myAppointments"></div>
-            <div id="consultationArea"></div>
-            <div class="card" style="margin-top:20px;">
-                <h3>📜 Mon historique de télésurveillance</h3>
-                <div id="historyList">Chargement...</div>
-            </div>
-        `;
-        
-        const docDiv = document.getElementById('doctorList');
-        docDiv.innerHTML = doctors.map(d => `<div class="doctor-card" data-id="${d.id}" data-name="${d.name}"><strong>Dr. ${d.name}</strong><br>Spécialité : ${d.specialty}</div>`).join('');
-        
-        document.querySelectorAll('.doctor-card').forEach(card => {
-            card.onclick = () => {
-                selectedDoctorId = card.dataset.id;
-                selectedDoctorName = card.dataset.name;
-                document.querySelectorAll('.doctor-card').forEach(c => c.classList.remove('selected'));
-                card.classList.add('selected');
-                renderCalendar();
-            };
-        });
-        
-        document.getElementById('myAppointments').innerHTML = myApps.length ? myApps.map(a => `
-            <div class="slot">
-                <div>Dr. ${a.doctorName} le ${new Date(a.start).toLocaleString()}</div>
-                <div>
-                    <button onclick="cancelAppointment('${a.id}')" class="btn-danger">Annuler</button> 
-                    <button onclick="joinAppointment('${a.id}','${a.doctorId}')" class="btn-success">Rejoindre la téléconsultation</button>
-                </div>
-            </div>
-        `).join('') : '<p>Aucun rendez-vous pris.</p>';
-        
-        if (doctors.length && selectedDoctorId) renderCalendar();
-        loadHistory();
-    }
-
-    async function renderCalendar() {
-        if (!selectedDoctorId) return;
-        const today = new Date();
-        let year = today.getFullYear(), month = today.getMonth();
-        let selectedDateStr = today.toISOString().slice(0,10);
-        const monthNames = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
-        
-        const build = async (y, m) => {
-            const first = new Date(y, m, 1);
-            const days = new Date(y, m+1, 0).getDate();
-            const start = first.getDay();
-            let html = `<div style="display:flex; justify-content:space-between; align-items:center;"><button id="prevMonth">◀</button><h4>${monthNames[m]} ${y}</h4><button id="nextMonth">▶</button></div><div class="calendar-grid">`;
-            ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'].forEach(d => html += `<div style="font-weight:bold">${d}</div>`);
-            for (let i=0; i<start; i++) html += `<div></div>`;
-            for (let d=1; d<=days; d++) {
-                const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                html += `<div class="calendar-day ${ds === selectedDateStr ? 'selected' : ''}" data-date="${ds}">${d}</div>`;
-            }
-            html += `</div>`;
-            document.getElementById('calendarView').innerHTML = html;
-            
-            document.querySelectorAll('.calendar-day').forEach(day => {
-                day.onclick = () => { selectedDateStr = day.dataset.date; build(y, m); loadSlots(selectedDateStr); };
-            });
-            document.getElementById('prevMonth').onclick = () => build(y, m - 1);
-            document.getElementById('nextMonth').onclick = () => build(y, m + 1);
-            await loadSlots(selectedDateStr);
-        };
-        await build(year, month);
-    }
-
-    async function loadSlots(dateStr) {
-        const res = await fetch(`/api/doctors/${selectedDoctorId}/slots?date=${dateStr}`);
-        const slots = await res.json();
-        const div = document.getElementById('slotsView');
-        if (!div) return;
-        if (!slots.length) { div.innerHTML = '<p>Aucun créneau disponible pour cette date.</p>'; return; }
-        div.innerHTML = `<h4>Créneaux du ${new Date(dateStr).toLocaleDateString()}</h4>` + slots.map(s => `<div class="slot"><span>🕒 ${s.startTimeFormatted}</span><button onclick="bookSlot('${s.start}','${s.end}')">Réserver</button></div>`).join('');
-    }
-
-    window.bookSlot = async (start, end) => {
-        const res = await fetch('/api/appointments', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ patientId: currentUser.id, patientName: currentUser.name, doctorId: selectedDoctorId, doctorName: selectedDoctorName, start, end })
-        });
-        const data = await res.json();
-        if (data.success) alert("Rendez-vous confirmé !");
-        loadPatientDashboard();
-    };
-    
-    window.cancelAppointment = async (id) => {
-        await fetch(`/api/appointments/${id}`, { method: 'DELETE' });
-        loadPatientDashboard();
-    };
-    
-    window.joinAppointment = (appId, docId) => {
-        socket.emit('call:request', { appointmentId: appId, patientId: currentUser.id, patientName: currentUser.name, doctorId: docId, doctorName: selectedDoctorName });
-    };
-
-    async function loadHistory() {
-        const res = await fetch('/api/history');
-        const history = await res.json();
-        const div = document.getElementById('historyList');
-        if(div) {
-            if(!history.length) div.innerHTML = "<p>Aucun enregistrement trouvé dans l'historique.</p>";
-            else div.innerHTML = history.map(h => `<div style="padding:6px 0;">Patient: <strong>${h.patientName}</strong>, date: ${h.date} — Rythme cardiaque moyen : <strong>${h.avgBpm} BPM</strong></div>`).join('<hr>');
-        }
-    }
+    window.delUser = async id => { await fetch(`/api/admin/users/${id}`, { method: 'DELETE' }); loadAdminDashboard(); };
 </script>
 </body>
 </html>

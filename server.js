@@ -1,6 +1,5 @@
 const express = require('express');
-const https = require('https');
-const fs = require('fs');
+const http = require('http');
 const path = require('path');
 const socketIo = require('socket.io');
 const os = require('os');
@@ -8,23 +7,14 @@ const os = require('os');
 const app = express();
 const PORT = 3443;
 
-// --- Configuration des certificats SSL (vm) ---
-const SSL_KEY_PATH = '/home/iut/certs/192.168.23.129-key.pem';
-const SSL_CERT_PATH = '/home/iut/certs/192.168.23.129.pem';
-
-if (!fs.existsSync(SSL_KEY_PATH) || !fs.existsSync(SSL_CERT_PATH)) {
-    console.error('❌ Certificats SSL manquants. Générez-les avec mkcert');
-    process.exit(1);
-}
-const credentials = { key: fs.readFileSync(SSL_KEY_PATH), cert: fs.readFileSync(SSL_CERT_PATH) };
-
-const server = https.createServer(credentials, app);
+const server = http.createServer(app);
+// Activation du CORS pour autoriser les connexions multi-appareils sur le réseau de la VM
 const io = socketIo(server, { cors: { origin: "*" }, transports: ['websocket', 'polling'] });
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ---------- Base de données en mémoire ----------
+// ---------- Base de données mémoire ----------
 const users = [
     { id: "admin_root", name: "Administrateur", email: "admin@doctoline.fr", password: "invite", role: "admin" }
 ];
@@ -73,13 +63,8 @@ app.post('/api/login', (req, res) => {
     res.json({ success: true, user: { id: user.id, name: user.name, role: user.role, doctorId } });
 });
 
-app.get('/api/admin/users', (req, res) => {
-    res.json(users.filter(u => u.role !== 'admin'));
-});
-
-app.get('/api/admin/logs', (req, res) => {
-    res.json(auditLogs);
-});
+app.get('/api/admin/users', (req, res) => res.json(users.filter(u => u.role !== 'admin')));
+app.get('/api/admin/logs', (req, res) => res.json(auditLogs));
 
 app.delete('/api/admin/users/:id', (req, res) => {
     const userId = req.params.id;
@@ -90,10 +75,10 @@ app.delete('/api/admin/users/:id', (req, res) => {
         const docIdx = doctors.findIndex(d => d.userId === userId);
         if (docIdx !== -1) doctors.splice(docIdx, 1);
         
-        logAction("ADMIN", `Suppression définitive de l'utilisateur : ${userName}`);
+        logAction("ADMIN", `Suppression de l'utilisateur : ${userName}`);
         return res.json({ success: true });
     }
-    res.status(404).json({ success: false, message: "Utilisateur introuvable" });
+    res.status(404).json({ success: false });
 });
 
 app.get('/api/doctors', (req, res) => {
@@ -104,24 +89,16 @@ app.get('/api/doctors/:doctorId/slots', (req, res) => {
     const { doctorId } = req.params;
     const { date } = req.query;
     if (!date) return res.json([]);
-    const doctor = doctors.find(d => d.id === doctorId);
-    if (!doctor) return res.json([]);
-
-    const dayOfWeek = new Date(date).getDay();
-    if (dayOfWeek === 0 || dayOfWeek === 6) return res.json([]);
-
     const slots = [];
     for (let hour = 9; hour < 18; hour++) {
         for (let minute = 0; minute < 60; minute += 30) {
             const start = new Date(date);
             start.setHours(hour, minute, 0, 0);
-            const end = new Date(start.getTime() + 30 * 60000);
             if (start <= new Date()) continue;
             const alreadyBooked = appointments.some(a => a.doctorId === doctorId && a.start === start.toISOString());
             if (!alreadyBooked) {
                 slots.push({
                     start: start.toISOString(),
-                    end: end.toISOString(),
                     startTimeFormatted: start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 });
             }
@@ -132,11 +109,9 @@ app.get('/api/doctors/:doctorId/slots', (req, res) => {
 
 app.post('/api/appointments', (req, res) => {
     const { patientId, patientName, doctorId, doctorName, start, end } = req.body;
-    const existing = appointments.find(a => a.doctorId === doctorId && a.start === start);
-    if (existing) return res.status(409).json({ success: false, message: 'Créneau déjà pris' });
     const newApp = { id: Date.now().toString(), patientId, patientName, doctorId, doctorName, start, end };
     appointments.push(newApp);
-    logAction(patientName, `Réservation de rendez-vous avec le Dr. ${doctorName}`);
+    logAction(patientName, `Rendez-vous pris avec le Dr. ${doctorName}`);
     res.json({ success: true, appointment: newApp });
 });
 
@@ -151,7 +126,7 @@ app.get('/api/doctors/:doctorId/appointments', (req, res) => {
 app.delete('/api/appointments/:appointmentId', (req, res) => {
     const idx = appointments.findIndex(a => a.id === req.params.appointmentId);
     if (idx !== -1) {
-        logAction("Système", `Annulation du rendez-vous ID: ${req.params.appointmentId}`);
+        logAction("Système", `Annulation rendez-vous ID: ${req.params.appointmentId}`);
         appointments.splice(idx, 1);
     }
     res.json({ success: true });
@@ -159,53 +134,47 @@ app.delete('/api/appointments/:appointmentId', (req, res) => {
 
 app.post('/api/history', (req, res) => {
     consultationHistory.push(req.body);
-    logAction(req.body.patientName, `Consultation terminée et archivée (${req.body.avgBpm} BPM moyens)`);
+    logAction(req.body.patientName, `Consultation archivée (${req.body.avgBpm} BPM moyens)`);
     res.json({ success: true });
 });
 
-app.get('/api/history', (req, res) => {
-    res.json(consultationHistory);
-});
+app.get('/api/history', (req, res) => res.json(consultationHistory));
 
-// ---------- SIGNALISATION SOCKET.IO (ONGLETS DISTINCTS) ----------
+// ---------- SIGNALISATION WEBRTC ----------
 const activeCalls = new Map();
 
 io.on('connection', (socket) => {
     socket.on('register', (data) => {
         socket.userId = data.userId;
-        socket.userName = data.userName;
-        socket.userRole = data.role;
         socket.join(`user-${data.userId}`);
     });
 
     socket.on('call:request', (data) => {
         const { appointmentId, patientId, patientName, doctorId, doctorName } = data;
         const callId = `call_${appointmentId}`;
-        activeCalls.set(callId, { callId, appointmentId, patientId, patientName, doctorId, doctorName, patientSocketId: socket.id, status: 'waiting' });
-        
-        io.to(`user-${doctorId}`).emit('call:incoming', { callId, patientId, patientName, doctorId, doctorName, fromSocketId: socket.id });
-        socket.emit('call:requested', { callId });
+        activeCalls.set(callId, { callId, patientSocketId: socket.id, doctorId, patientName, status: 'waiting' });
+        io.to(`user-${doctorId}`).emit('call:incoming', { callId, patientName, fromSocketId: socket.id });
     });
 
     socket.on('call:accept', (data) => {
-        const { callId, doctorId, doctorName } = data;
+        const { callId } = data;
         const call = activeCalls.get(callId);
         if (call && call.status === 'waiting') {
             call.status = 'accepted';
             call.doctorSocketId = socket.id;
-            
-            io.to(call.patientSocketId).emit('call:accepted', { callId, doctorId, doctorName, doctorSocketId: socket.id });
-            socket.emit('webrtc:ready', { callId, patientId: call.patientId, patientName: call.patientName, patientSocketId: call.patientSocketId });
+            io.to(call.patientSocketId).emit('call:accepted', { callId, doctorSocketId: socket.id });
+            socket.emit('webrtc:ready', { callId, targetSocketId: call.patientSocketId });
         }
     });
 
-    // Relais de signalisation WebRTC pure entre les onglets
     socket.on('webrtc:offer', (data) => {
         io.to(data.targetSocketId).emit('webrtc:offer', { offer: data.offer, fromSocketId: socket.id });
     });
+
     socket.on('webrtc:answer', (data) => {
         io.to(data.targetSocketId).emit('webrtc:answer', { answer: data.answer, fromSocketId: socket.id });
     });
+
     socket.on('webrtc:ice-candidate', (data) => {
         io.to(data.targetSocketId).emit('webrtc:ice-candidate', { candidate: data.candidate, fromSocketId: socket.id });
     });
@@ -239,5 +208,6 @@ function getLocalIp() {
 }
 
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🔒 Serveur HTTPS démarré sur https://${getLocalIp()}:${PORT}`);
+    console.log(`\n🚀 Serveur HTTP démarré sur la VM.`);
+    console.log(`🔗 Adresse locale de test : http://${getLocalIp()}:${PORT}\n`);
 });
