@@ -85,7 +85,7 @@
 
     let currentUser = null, socket = null;
     let localStream = null;
-    let localPeerConnection = null, remotePeerConnection = null; // MÉTHODE DU COURS : Les deux objets de connexion locaux
+    let localPeerConnection = null, remotePeerConnection = null; 
     let activeCallId = null, targetSocketId = null;
     let sensorInterval = null;
     let selectedDoctorId = null, selectedDoctorName = null;
@@ -176,10 +176,9 @@
         socket.on('call:ended', () => cleanCallUI());
     }
 
-    // MÉTHODE DU COURS (Page 34 / TP 1 Local Multi-peer) : Gestion unifiée de la caméra locale
+    // MÉTHODE DU COURS (Codelab / Loopback local) : Initialisation sécurisée
     async function startCall() {
         try {
-            // Un seul appel matériel à getUserMedia : Pas de conflit de ressources matérielles !
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
 
             let container = document.getElementById('consultationArea');
@@ -238,7 +237,6 @@
             const remoteVideo = document.getElementById('remoteVideo');
             if (localVideo) localVideo.srcObject = localStream;
 
-            // APPLICATION STRICTE DU COURS : On crée les connexions interconnectées localement
             localPeerConnection = new RTCPeerConnection(ICE_CONFIG);
             remotePeerConnection = new RTCPeerConnection(ICE_CONFIG);
 
@@ -253,10 +251,8 @@
                 if (remoteVideo) remoteVideo.srcObject = e.streams[0];
             };
 
-            // Ajout du flux local unique à la connexion émettrice
             localStream.getTracks().forEach(track => localPeerConnection.addTrack(track, localStream));
 
-            // Négociation SDP directe comme documenté dans le TP 1 du prof
             const offer = await localPeerConnection.createOffer();
             await localPeerConnection.setLocalDescription(offer);
             await remotePeerConnection.setRemoteDescription(offer);
@@ -320,12 +316,21 @@
         cleanCallUI();
     }
 
+    // CORRECTION DU BUG : Sécurisation avec des vérifications conditionnelles (if)
     function closeMediaConnections() {
         if (sensorInterval) clearInterval(sensorInterval);
-        if (localStream) localStream.getTracks().forEach(t => t.stop());
-        if (localPeerConnection) localPeerConnection.close();
-        if (remotePeerConnection) remotePeerConnection.close();
-        localStream = localPeerConnection = remotePeerConnection = null;
+        if (localStream) {
+            localStream.getTracks().forEach(t => t.stop());
+            localStream = null;
+        }
+        if (localPeerConnection) {
+            localPeerConnection.close();
+            localPeerConnection = null;
+        }
+        if (remotePeerConnection) {
+            remotePeerConnection.close();
+            remotePeerConnection = null;
+        }
     }
 
     function cleanCallUI() {
