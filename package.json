@@ -1,14 +1,13 @@
 {
-  "name": "teleconsultation",
-  "version": "1.0.0",
-  "description": "Plateforme de teleconsultation",
+  "name": "plateforme-teleconsultation",
+  "version": "2.0.0",
+  "description": "Plateforme de téléconsultation avec calendrier, RDV, WebRTC STUN/TURN, capteurs simulés, FHIR",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "socket.io": "^4.7.5",
-    "uuid": "^9.0.1"
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1"
   }
 }

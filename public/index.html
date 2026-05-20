@@ -1,67 +1,1437 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <title>Téléconsultation</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DoctoLine – Téléconsultation</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  /* ===== VARIABLES & RESET ===== */
+  :root {
+    --primary: #0a5c7f;
+    --primary-light: #1a8ab5;
+    --primary-dark: #063a52;
+    --accent: #00c9a7;
+    --accent2: #f5a623;
+    --danger: #e74c3c;
+    --success: #27ae60;
+    --bg: #f0f4f8;
+    --card: #ffffff;
+    --text: #1a2a3a;
+    --text-muted: #7a8fa0;
+    --border: #d0dde8;
+    --shadow: 0 4px 24px rgba(10,92,127,0.10);
+    --radius: 14px;
+    --font: 'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
 
-    <link rel="stylesheet" href="style.css">
+  /* ===== LAYOUT ===== */
+  #app { display: flex; flex-direction: column; min-height: 100vh; }
+  .header {
+    background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 60%, var(--primary-light) 100%);
+    color: white; padding: 0 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 64px; box-shadow: 0 2px 16px rgba(10,92,127,0.25);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-logo { display: flex; align-items: center; gap: 10px; font-size: 1.4rem; font-weight: 700; letter-spacing: -0.5px; }
+  .header-logo .logo-icon { font-size: 1.8rem; }
+  .header-user { display: flex; align-items: center; gap: 14px; font-size: 0.95rem; }
+  .badge-role {
+    background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.35);
+    border-radius: 20px; padding: 3px 12px; font-size: 0.82rem; font-weight: 600;
+  }
+  .badge-role.medecin { background: rgba(0,201,167,0.3); border-color: var(--accent); }
 
-    <script src="/socket.io/socket.io.js"></script>
+  .main { flex: 1; padding: 28px 24px; max-width: 900px; margin: 0 auto; width: 100%; }
+
+  /* ===== CARDS ===== */
+  .card {
+    background: var(--card); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 24px; margin-bottom: 20px;
+    border: 1px solid var(--border);
+  }
+  .card-title {
+    font-size: 1.1rem; font-weight: 700; color: var(--primary-dark);
+    display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+    padding-bottom: 12px; border-bottom: 2px solid var(--bg);
+  }
+
+  /* ===== FORMS ===== */
+  .form-group { margin-bottom: 16px; }
+  label { display: block; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  input, select, textarea {
+    width: 100%; padding: 11px 14px; border: 1.5px solid var(--border);
+    border-radius: 8px; font-size: 0.97rem; font-family: var(--font);
+    color: var(--text); background: white; transition: border-color 0.2s;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--primary-light); box-shadow: 0 0 0 3px rgba(26,138,181,0.12); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  /* ===== BUTTONS ===== */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 22px; border: none; border-radius: 9px;
+    font-size: 0.95rem; font-weight: 600; cursor: pointer;
+    transition: all 0.18s; text-decoration: none;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .btn:active { transform: none; }
+  .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; }
+  .btn-accent { background: linear-gradient(135deg, var(--accent), #00a88d); color: white; }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-outline { background: white; color: var(--primary); border: 2px solid var(--primary); }
+  .btn-sm { padding: 7px 14px; font-size: 0.87rem; border-radius: 7px; }
+  .btn-full { width: 100%; justify-content: center; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  /* ===== TABS ===== */
+  .tabs { display: flex; gap: 6px; margin-bottom: 24px; }
+  .tab {
+    padding: 9px 20px; border-radius: 8px; border: none; background: var(--bg);
+    color: var(--text-muted); font-weight: 600; cursor: pointer; font-size: 0.92rem;
+    transition: all 0.2s; border: 1.5px solid transparent;
+  }
+  .tab.active { background: white; color: var(--primary); border-color: var(--primary-light); box-shadow: var(--shadow); }
+
+  /* ===== VIEWS ===== */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ===== LOGIN / REGISTER ===== */
+  #auth-view { display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 64px); padding: 20px; }
+  .auth-container { width: 100%; max-width: 440px; }
+  .auth-hero {
+    text-align: center; margin-bottom: 24px;
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+    color: white; border-radius: var(--radius); padding: 32px 24px;
+  }
+  .auth-hero h1 { font-size: 2rem; margin-bottom: 6px; }
+  .auth-hero p { opacity: 0.85; font-size: 0.95rem; }
+  .auth-tabs { display: flex; border-radius: 10px; overflow: hidden; border: 1.5px solid var(--border); margin-bottom: 20px; }
+  .auth-tab { flex: 1; padding: 11px; text-align: center; border: none; background: var(--bg); color: var(--text-muted); font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .auth-tab.active { background: var(--primary); color: white; }
+
+  /* ===== DOCTOR CARD ===== */
+  .doctor-card {
+    display: flex; align-items: center; gap: 16px;
+    padding: 16px; border: 1.5px solid var(--border);
+    border-radius: 10px; margin-bottom: 12px; background: var(--bg);
+    transition: all 0.2s;
+  }
+  .doctor-card:hover { border-color: var(--primary-light); background: white; }
+  .doc-avatar {
+    width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent));
+    display: flex; align-items: center; justify-content: center; font-size: 1.5rem; flex-shrink: 0;
+  }
+  .doc-info { flex: 1; }
+  .doc-name { font-weight: 700; color: var(--primary-dark); }
+  .doc-specialty { font-size: 0.87rem; color: var(--text-muted); }
+
+  /* ===== APPOINTMENT ===== */
+  .appt-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-radius: 10px; border: 1.5px solid var(--border);
+    margin-bottom: 10px; background: var(--bg);
+  }
+  .appt-item.upcoming { border-left: 4px solid var(--primary-light); }
+  .appt-item.completed { border-left: 4px solid var(--success); opacity: 0.75; }
+  .appt-date { font-weight: 700; font-size: 0.95rem; }
+  .appt-meta { font-size: 0.85rem; color: var(--text-muted); }
+  .appt-actions { display: flex; gap: 8px; }
+
+  /* ===== CALENDAR ===== */
+  .slots-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; margin-top: 14px; }
+  .slot-btn {
+    padding: 10px 8px; border-radius: 8px; border: 1.5px solid var(--primary-light);
+    background: white; color: var(--primary); font-weight: 600; cursor: pointer;
+    text-align: center; font-size: 0.9rem; transition: all 0.15s;
+  }
+  .slot-btn:hover, .slot-btn.selected { background: var(--primary); color: white; border-color: var(--primary); }
+
+  /* ===== CALL UI ===== */
+  #call-view {
+    position: fixed; inset: 0; background: #0a1520; z-index: 1000;
+    display: none; flex-direction: column;
+  }
+  #call-view.active { display: flex; }
+  .call-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px; background: rgba(255,255,255,0.05);
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+  .call-title { color: white; font-size: 1.1rem; font-weight: 700; }
+  .call-status { color: var(--accent); font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .call-timer { color: #a0b4c8; font-size: 0.9rem; font-weight: 600; }
+
+  .videos-container {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    position: relative; padding: 20px; gap: 16px;
+  }
+  #remote-video {
+    width: 100%; max-width: 720px; max-height: 480px;
+    background: #0d1f2d; border-radius: 16px; border: 2px solid rgba(255,255,255,0.1);
+    object-fit: cover;
+  }
+  #local-video {
+    position: absolute; bottom: 30px; right: 30px;
+    width: 180px; height: 120px; border-radius: 10px;
+    border: 2px solid var(--accent); object-fit: cover; z-index: 10;
+    background: #1a2a3a;
+  }
+  .no-video-placeholder {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.4); gap: 12px; font-size: 1rem;
+    width: 100%; max-width: 720px; height: 400px;
+    background: #0d1f2d; border-radius: 16px; border: 2px solid rgba(255,255,255,0.08);
+  }
+  .no-video-placeholder .icon { font-size: 3rem; }
+
+  .call-controls {
+    display: flex; align-items: center; justify-content: center; gap: 16px;
+    padding: 20px; background: rgba(255,255,255,0.04);
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .ctrl-btn {
+    width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer;
+    font-size: 1.3rem; display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; background: rgba(255,255,255,0.1); color: white;
+  }
+  .ctrl-btn:hover { transform: scale(1.1); }
+  .ctrl-btn.active { background: rgba(255,255,255,0.22); }
+  .ctrl-btn.danger { background: var(--danger); }
+  .ctrl-btn.danger:hover { background: #c0392b; }
+  .ctrl-btn.muted { background: rgba(231,76,60,0.4); }
+
+  /* ===== SENSOR PANEL ===== */
+  .sensor-panel {
+    background: rgba(255,255,255,0.05); border-radius: 12px;
+    padding: 16px; margin: 0 20px 12px 20px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .sensor-title { color: rgba(255,255,255,0.8); font-size: 0.85rem; font-weight: 700; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .sensor-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .sensor-item { text-align: center; background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 8px; }
+  .sensor-label { font-size: 0.75rem; color: rgba(255,255,255,0.55); text-transform: uppercase; margin-bottom: 4px; }
+  .sensor-value { font-size: 1.5rem; font-weight: 700; color: white; }
+  .sensor-value.hr { color: #ff6b6b; }
+  .sensor-value.temp { color: #ffd93d; }
+  .sensor-value.spo2 { color: #6bceff; }
+  .sensor-unit { font-size: 0.75rem; color: rgba(255,255,255,0.5); }
+  .sensor-status { display: inline-block; margin-top: 2px; font-size: 0.7rem; padding: 1px 7px; border-radius: 8px; font-weight: 600; }
+  .sensor-status.normal { background: rgba(0,201,167,0.3); color: var(--accent); }
+  .sensor-status.alert { background: rgba(231,76,60,0.3); color: #ff6b6b; }
+
+  /* ===== SENSOR GRAPH ===== */
+  .sensor-graph-container { padding: 0 20px 10px 20px; }
+  canvas#hrChart { border-radius: 8px; background: rgba(255,255,255,0.04); width: 100% !important; }
+
+  /* ===== FHIR PANEL ===== */
+  .fhir-btn-area { padding: 0 20px 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .fhir-output {
+    margin: 0 20px 16px;
+    background: rgba(0,0,0,0.3); border-radius: 10px;
+    padding: 14px; max-height: 200px; overflow-y: auto;
+    display: none;
+  }
+  .fhir-output pre { color: #a8ff78; font-size: 0.78rem; font-family: 'Courier New', monospace; white-space: pre-wrap; }
+
+  /* ===== INCOMING CALL ===== */
+  #incoming-call-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+    z-index: 2000; display: none; align-items: center; justify-content: center;
+  }
+  #incoming-call-overlay.active { display: flex; }
+  .incoming-call-box {
+    background: var(--primary-dark); border-radius: 20px; padding: 36px;
+    text-align: center; max-width: 340px; width: 90%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);
+    animation: slideIn 0.3s ease;
+  }
+  @keyframes slideIn { from{transform:translateY(-40px);opacity:0} to{transform:none;opacity:1} }
+  .incoming-avatar { font-size: 3.5rem; margin-bottom: 12px; }
+  .incoming-name { color: white; font-size: 1.3rem; font-weight: 700; margin-bottom: 4px; }
+  .incoming-label { color: rgba(255,255,255,0.6); font-size: 0.9rem; margin-bottom: 24px; }
+  .incoming-actions { display: flex; gap: 20px; justify-content: center; }
+  .call-answer { width: 64px; height: 64px; border-radius: 50%; background: var(--success); border: none; font-size: 1.8rem; cursor: pointer; color: white; transition: transform 0.2s; }
+  .call-decline { width: 64px; height: 64px; border-radius: 50%; background: var(--danger); border: none; font-size: 1.8rem; cursor: pointer; color: white; transition: transform 0.2s; }
+  .call-answer:hover, .call-decline:hover { transform: scale(1.1); }
+
+  /* ===== ALERT ===== */
+  .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 14px; font-size: 0.92rem; font-weight: 500; }
+  .alert-error { background: #fdecea; color: var(--danger); border: 1px solid #f5c6c2; }
+  .alert-success { background: #eafaf1; color: var(--success); border: 1px solid #a9dfbf; }
+  .alert-info { background: #e8f4fd; color: var(--primary); border: 1px solid #b3d7f0; }
+
+  /* ===== MISC ===== */
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+  .empty-state .icon { font-size: 2.5rem; margin-bottom: 10px; }
+  .spinner { display: inline-block; width: 18px; height: 18px; border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: white; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  hr.divider { border: none; border-top: 1.5px solid var(--border); margin: 20px 0; }
+  .text-muted { color: var(--text-muted); font-size: 0.9rem; }
+  .chat-messages {
+    height: 180px; overflow-y: auto; background: var(--bg);
+    border-radius: 10px; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border);
+  }
+  .chat-msg { margin-bottom: 8px; font-size: 0.9rem; }
+  .chat-msg .from { font-weight: 700; color: var(--primary); margin-right: 6px; }
+  .chat-msg .from.me { color: var(--accent); }
+  .hidden { display: none !important; }
+</style>
 </head>
-
 <body>
+<div id="app">
 
-<h1>Plateforme Téléconsultation</h1>
+  <!-- ===== HEADER ===== -->
+  <header class="header" id="main-header">
+    <div class="header-logo">
+      <span class="logo-icon">🩺</span>
+      <span>DoctoLine</span>
+    </div>
+    <div class="header-user" id="header-user" style="display:none">
+      <span id="header-name"></span>
+      <span class="badge-role" id="header-role"></span>
+      <button class="btn btn-outline btn-sm" onclick="logout()">Déconnexion</button>
+    </div>
+  </header>
 
-<div class="login">
+  <!-- ===== AUTH VIEW ===== -->
+  <div id="auth-view">
+    <div class="auth-container">
+      <div class="auth-hero">
+        <h1>🩺 DoctoLine</h1>
+        <p>Plateforme de téléconsultation médicale sécurisée</p>
+      </div>
+      <div class="auth-tabs">
+        <button class="auth-tab active" onclick="switchAuthTab('login')">Connexion</button>
+        <button class="auth-tab" onclick="switchAuthTab('register')">Inscription</button>
+      </div>
 
-    <input type="text" id="username" placeholder="Nom">
+      <!-- LOGIN -->
+      <div class="card" id="login-form">
+        <div id="login-error"></div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="login-email" placeholder="votre@email.com">
+        </div>
+        <div class="form-group">
+          <label>Mot de passe</label>
+          <input type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')loginUser()">
+        </div>
+        <button class="btn btn-primary btn-full" onclick="loginUser()">Se connecter</button>
+        <p class="text-muted" style="text-align:center;margin-top:14px">
+          Comptes démo : <strong>patient@test.fr / patient123</strong> | <strong>medecin@test.fr / medecin123</strong>
+        </p>
+      </div>
 
-    <select id="role">
-        <option value="patient">Patient</option>
-        <option value="medecin">Médecin</option>
-    </select>
+      <!-- REGISTER -->
+      <div class="card" id="register-form" style="display:none">
+        <div id="register-error"></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nom complet</label>
+            <input type="text" id="reg-name" placeholder="Dr. Jean Dupont">
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="reg-email" placeholder="vous@email.com">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Mot de passe</label>
+            <input type="password" id="reg-password" placeholder="••••••••">
+          </div>
+          <div class="form-group">
+            <label>Rôle</label>
+            <select id="reg-role" onchange="toggleDoctorFields()">
+              <option value="patient">Patient</option>
+              <option value="medecin">Médecin</option>
+            </select>
+          </div>
+        </div>
+        <div id="doctor-fields" style="display:none">
+          <div class="form-group">
+            <label>Spécialité</label>
+            <select id="reg-specialty">
+              <option value="Médecine générale">Médecine générale</option>
+              <option value="Cardiologie">Cardiologie</option>
+              <option value="Dermatologie">Dermatologie</option>
+              <option value="Neurologie">Neurologie</option>
+              <option value="Pédiatrie">Pédiatrie</option>
+              <option value="Psychiatrie">Psychiatrie</option>
+              <option value="Ophtalmologie">Ophtalmologie</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <input type="text" id="reg-desc" placeholder="Ex: 10 ans d'expérience en cardiologie">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="registerUser()">Créer mon compte</button>
+      </div>
+    </div>
+  </div>
 
-    <button onclick="join()">Connexion</button>
-</div>
+  <!-- ===== MAIN VIEW ===== -->
+  <div class="main" id="main-view" style="display:none">
 
-<hr>
+    <!-- PATIENT DASHBOARD -->
+    <div id="patient-dashboard" style="display:none">
+      <div class="card">
+        <div class="card-title">👤 Tableau de bord – <span id="patient-greeting"></span></div>
+        <div class="tabs" id="patient-tabs">
+          <button class="tab active" onclick="showPatientTab('doctors')">🏥 Médecins</button>
+          <button class="tab" onclick="showPatientTab('appointments')">📅 Mes RDV</button>
+          <button class="tab" onclick="showPatientTab('history')">📋 Historique</button>
+        </div>
 
-<h2>Utilisateurs connectés</h2>
+        <!-- DOCTORS LIST -->
+        <div id="tab-doctors" class="view active">
+          <div id="doctors-list"><div class="empty-state"><div class="icon">⏳</div>Chargement...</div></div>
+          
+          <!-- SLOT PICKER -->
+          <div id="slot-picker" style="display:none;margin-top:20px;">
+            <hr class="divider">
+            <div class="card-title">📅 Réserver un créneau avec <strong id="selected-doctor-name"></strong></div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Choisir une date</label>
+                <input type="date" id="slot-date" onchange="loadSlots()" min="">
+              </div>
+              <div class="form-group" style="align-self:end">
+                <button class="btn btn-outline btn-sm" onclick="document.getElementById('slot-picker').style.display='none'">Annuler</button>
+              </div>
+            </div>
+            <div id="slots-container"><div class="empty-state"><div class="icon">📅</div>Sélectionnez une date</div></div>
+          </div>
+        </div>
 
-<div id="users"></div>
+        <!-- MY APPOINTMENTS -->
+        <div id="tab-appointments" class="view">
+          <div id="patient-appointments"><div class="empty-state"><div class="icon">📭</div>Aucun rendez-vous</div></div>
+        </div>
 
-<hr>
-
-<div class="videos">
-
-    <div>
-        <h3>Local</h3>
-        <video id="localVideo" autoplay playsinline muted></video>
+        <!-- HISTORY -->
+        <div id="tab-history" class="view">
+          <div id="patient-history"><div class="empty-state"><div class="icon">📋</div>Aucune consultation passée</div></div>
+        </div>
+      </div>
     </div>
 
-    <div>
-        <h3>Remote</h3>
-        <video id="remoteVideo" autoplay playsinline></video>
+    <!-- DOCTOR DASHBOARD -->
+    <div id="doctor-dashboard" style="display:none">
+      <div class="card">
+        <div class="card-title">🩺 Tableau de bord – Dr. <span id="doctor-greeting"></span></div>
+        <div class="tabs">
+          <button class="tab active" onclick="showDoctorTab('appointments')">📅 Rendez-vous</button>
+          <button class="tab" onclick="showDoctorTab('unavailability')">🚫 Indisponibilité</button>
+          <button class="tab" onclick="showDoctorTab('history')">📋 Historique</button>
+        </div>
+
+        <div id="tab-doc-appointments" class="view active">
+          <div id="doctor-appointments"><div class="empty-state"><div class="icon">📭</div>Aucun rendez-vous</div></div>
+        </div>
+
+        <div id="tab-doc-unavailability" class="view">
+          <div class="form-group">
+            <label>Marquer comme indisponible le :</label>
+            <input type="date" id="unavail-date">
+          </div>
+          <button class="btn btn-danger" onclick="addUnavailability()">🚫 Ajouter indisponibilité</button>
+          <div id="unavail-msg" style="margin-top:10px"></div>
+        </div>
+
+        <div id="tab-doc-history" class="view">
+          <div id="doctor-history"><div class="empty-state"><div class="icon">📋</div>Aucune consultation passée</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CALL VIEW (plein écran) ===== -->
+  <div id="call-view">
+    <div class="call-header">
+      <div>
+        <div class="call-title" id="call-title">Consultation en cours</div>
+        <div class="call-status" id="call-status-bar">
+          <span class="status-dot"></span>
+          <span id="call-status-text">Connexion...</span>
+        </div>
+      </div>
+      <div class="call-timer" id="call-timer">00:00</div>
     </div>
 
+    <!-- Sensor Panel -->
+    <div class="sensor-panel">
+      <div class="sensor-title">📡 Capteurs biométriques simulés (temps réel)</div>
+      <div class="sensor-grid">
+        <div class="sensor-item">
+          <div class="sensor-label">❤️ Fréquence cardiaque</div>
+          <div class="sensor-value hr" id="s-hr">--</div>
+          <div class="sensor-unit">bpm</div>
+          <span class="sensor-status" id="s-hr-status">--</span>
+        </div>
+        <div class="sensor-item">
+          <div class="sensor-label">🌡️ Température</div>
+          <div class="sensor-value temp" id="s-temp">--</div>
+          <div class="sensor-unit">°C</div>
+          <span class="sensor-status" id="s-temp-status">--</span>
+        </div>
+        <div class="sensor-item">
+          <div class="sensor-label">💨 SpO2</div>
+          <div class="sensor-value spo2" id="s-spo2">--</div>
+          <div class="sensor-unit">%</div>
+          <span class="sensor-status" id="s-spo2-status">--</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- HR Graph -->
+    <div class="sensor-graph-container">
+      <canvas id="hrChart" height="60"></canvas>
+    </div>
+
+    <!-- FHIR -->
+    <div class="fhir-btn-area">
+      <button class="btn btn-accent btn-sm" onclick="generateFHIR()">📄 Générer ressource FHIR Observation</button>
+      <button class="btn btn-outline btn-sm" style="color:white;border-color:rgba(255,255,255,0.3)" onclick="toggleFhirOutput()">👁️ Voir JSON</button>
+      <button class="btn btn-sm" style="background:rgba(255,255,255,0.1);color:white" onclick="copyFhirJson()">📋 Copier</button>
+    </div>
+    <div class="fhir-output" id="fhir-output">
+      <pre id="fhir-json">Cliquez sur "Générer ressource FHIR"</pre>
+    </div>
+
+    <!-- Videos -->
+    <div class="videos-container">
+      <div id="no-video-remote" class="no-video-placeholder">
+        <div class="icon">🎥</div>
+        <div>En attente de la vidéo distante...</div>
+        <div style="font-size:0.8rem;opacity:0.6">La caméra de votre interlocuteur apparaîtra ici</div>
+      </div>
+      <video id="remote-video" autoplay playsinline style="display:none"></video>
+      <video id="local-video" autoplay muted playsinline></video>
+    </div>
+
+    <!-- Text Chat -->
+    <div style="padding:0 20px 10px;display:flex;gap:10px;align-items:flex-end">
+      <div style="flex:1">
+        <div class="chat-messages" id="chat-messages"></div>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="chat-input" placeholder="Message texte..." style="flex:1"
+            onkeydown="if(event.key==='Enter')sendChatMessage()">
+          <button class="btn btn-primary btn-sm" onclick="sendChatMessage()">Envoyer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="call-controls">
+      <button class="ctrl-btn" id="btn-mute-audio" title="Couper/activer le micro" onclick="toggleAudio()">🎤</button>
+      <button class="ctrl-btn" id="btn-mute-video" title="Couper/activer la caméra" onclick="toggleVideo()">📹</button>
+      <button class="ctrl-btn" id="btn-sensor" title="Activer/désactiver capteurs" onclick="toggleSensor()" style="font-size:1rem">📡</button>
+      <button class="ctrl-btn danger" title="Terminer l'appel" onclick="endCall()">📵</button>
+    </div>
+  </div>
+
+  <!-- ===== INCOMING CALL OVERLAY ===== -->
+  <div id="incoming-call-overlay">
+    <div class="incoming-call-box">
+      <div class="incoming-avatar">🩺</div>
+      <div class="incoming-name" id="incoming-caller-name">Dr. Jean</div>
+      <div class="incoming-label">Souhaite démarrer une consultation</div>
+      <div class="incoming-actions">
+        <button class="call-answer" onclick="acceptCall()" title="Accepter">📞</button>
+        <button class="call-decline" onclick="rejectCall()" title="Refuser">📵</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
-<hr>
+<script>
+// ===================================================================
+// ÉTAT GLOBAL
+// ===================================================================
+const STATE = {
+  user: null,
+  socket: null,
+  peerConnection: null,
+  localStream: null,
+  currentCallId: null,
+  peerSocketId: null,
+  sensorInterval: null,
+  callTimerInterval: null,
+  callStartTime: null,
+  sensorActive: true,
+  audioMuted: false,
+  videoMuted: false,
+  hrHistory: [],
+  lastFhirData: null,
+  pendingCallData: null,   // pour l'appel entrant
+  selectedDoctorId: null,
+  selectedDoctorName: null,
+  chatChannel: null,
+};
 
-<h2>Pseudo-capteur</h2>
+// Serveurs ICE : STUN (Google) + TURN (coturn local)
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  {
+    urls: 'turn:192.168.23.129:3478',
+    username: 'patient',
+    credential: 'patient123'
+  },
+  {
+    urls: 'turn:192.168.23.129:3478',
+    username: 'medecin',
+    credential: 'medecin123'
+  }
+];
 
-<div id="sensor">
-    Fréquence cardiaque :
-    <span id="heartRate">0</span> BPM
-</div>
+// ===================================================================
+// INIT : créer des comptes démo automatiquement
+// ===================================================================
+window.addEventListener('load', async () => {
+  // Today min for date pickers
+  const today = new Date().toISOString().split('T')[0];
+  const dateInputs = document.querySelectorAll('input[type="date"]');
+  dateInputs.forEach(d => d.min = today);
+  document.getElementById('slot-date').value = today;
+  
+  // Créer les comptes démo si besoin
+  await createDemoAccounts();
+});
 
-<button onclick="generateFHIR()">Générer FHIR</button>
+async function createDemoAccounts() {
+  try {
+    await fetch('/api/register', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ name:'Boris', email:'patient@test.fr', password:'patient123', role:'patient' })
+    });
+    await fetch('/api/register', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ name:'Dr Jean', email:'medecin@test.fr', password:'medecin123', role:'medecin', specialty:'Médecine générale', description:'Médecin généraliste avec 15 ans d\'expérience' })
+    });
+  } catch(e) { /* silencieux si déjà créé */ }
+}
 
-<pre id="fhirOutput"></pre>
+// ===================================================================
+// AUTHENTIFICATION
+// ===================================================================
+function switchAuthTab(tab) {
+  document.querySelectorAll('.auth-tab').forEach((t,i) => t.classList.toggle('active', (tab==='login')===!i));
+  document.getElementById('login-form').style.display = tab==='login' ? 'block' : 'none';
+  document.getElementById('register-form').style.display = tab==='register' ? 'block' : 'none';
+}
 
-<script src="fhir.js"></script>
-<script src="app.js"></script>
+function toggleDoctorFields() {
+  const role = document.getElementById('reg-role').value;
+  document.getElementById('doctor-fields').style.display = role === 'medecin' ? 'block' : 'none';
+}
 
+async function loginUser() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errDiv = document.getElementById('login-error');
+  errDiv.innerHTML = '';
+  if (!email || !password) { errDiv.innerHTML = '<div class="alert alert-error">Remplissez tous les champs.</div>'; return; }
+  
+  try {
+    const res = await fetch('/api/login', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({email, password})
+    });
+    const data = await res.json();
+    if (!data.success) { errDiv.innerHTML = `<div class="alert alert-error">${data.message}</div>`; return; }
+    STATE.user = data.user;
+    initApp();
+  } catch(e) { errDiv.innerHTML = '<div class="alert alert-error">Erreur réseau.</div>'; }
+}
+
+async function registerUser() {
+  const name = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const role = document.getElementById('reg-role').value;
+  const specialty = role==='medecin' ? document.getElementById('reg-specialty').value : undefined;
+  const description = role==='medecin' ? document.getElementById('reg-desc').value : undefined;
+  const errDiv = document.getElementById('register-error');
+  errDiv.innerHTML = '';
+  
+  if (!name || !email || !password) { errDiv.innerHTML = '<div class="alert alert-error">Remplissez tous les champs.</div>'; return; }
+  try {
+    const res = await fetch('/api/register', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, email, password, role, specialty, description})
+    });
+    const data = await res.json();
+    if (!data.success) { errDiv.innerHTML = `<div class="alert alert-error">${data.message}</div>`; return; }
+    errDiv.innerHTML = '<div class="alert alert-success">Compte créé ! Vous pouvez vous connecter.</div>';
+    setTimeout(()=>switchAuthTab('login'), 1500);
+  } catch(e) { errDiv.innerHTML = '<div class="alert alert-error">Erreur réseau.</div>'; }
+}
+
+function logout() {
+  if (STATE.currentCallId) endCall();
+  if (STATE.socket) STATE.socket.disconnect();
+  STATE.user = null;
+  document.getElementById('main-view').style.display = 'none';
+  document.getElementById('auth-view').style.display = 'flex';
+  document.getElementById('header-user').style.display = 'none';
+}
+
+// ===================================================================
+// INIT APRÈS LOGIN
+// ===================================================================
+function initApp() {
+  document.getElementById('auth-view').style.display = 'none';
+  document.getElementById('main-view').style.display = 'block';
+  
+  const u = STATE.user;
+  document.getElementById('header-user').style.display = 'flex';
+  document.getElementById('header-name').textContent = u.name;
+  const roleEl = document.getElementById('header-role');
+  roleEl.textContent = u.role === 'medecin' ? '🩺 Médecin' : '👤 Patient';
+  if (u.role === 'medecin') roleEl.classList.add('medecin');
+
+  // Socket.IO
+  initSocket();
+
+  // Dashboard
+  if (u.role === 'patient') {
+    document.getElementById('patient-dashboard').style.display = 'block';
+    document.getElementById('patient-greeting').textContent = u.name;
+    loadDoctors();
+    loadPatientAppointments();
+  } else {
+    document.getElementById('doctor-dashboard').style.display = 'block';
+    document.getElementById('doctor-greeting').textContent = u.name;
+    loadDoctorAppointments();
+  }
+}
+
+// ===================================================================
+// SOCKET.IO
+// ===================================================================
+function initSocket() {
+  STATE.socket = io({ transports: ['websocket','polling'] });
+
+  STATE.socket.on('connect', () => {
+    STATE.socket.emit('register', {
+      userId: STATE.user.id,
+      userName: STATE.user.name,
+      role: STATE.user.role
+    });
+  });
+
+  STATE.socket.on('force-logout', (data) => {
+    alert(data.message);
+    logout();
+  });
+
+  // Appel entrant
+  STATE.socket.on('call:incoming', (data) => {
+    STATE.pendingCallData = data;
+    document.getElementById('incoming-caller-name').textContent = 
+      data.doctorName ? `Dr. ${data.doctorName}` : data.patientName;
+    document.getElementById('incoming-call-overlay').classList.add('active');
+  });
+
+  STATE.socket.on('call:requested', (data) => {
+    STATE.currentCallId = data.callId;
+    console.log('Appel initié, callId:', data.callId);
+  });
+
+  STATE.socket.on('call:accepted', async (data) => {
+    STATE.currentCallId = data.callId;
+    STATE.peerSocketId = data.peerSocketId;
+    showCallView(`Consultation avec ${data.doctorName || data.patientName}`);
+    await startCall(true); // initiateur = true → crée l'offre
+  });
+
+  STATE.socket.on('webrtc:ready', async (data) => {
+    STATE.currentCallId = data.callId;
+    STATE.peerSocketId = data.peerSocketId;
+    // L'accepteur attend l'offre
+  });
+
+  STATE.socket.on('call:rejected', () => {
+    alert('Le médecin a refusé la consultation ou n\'est pas disponible.');
+  });
+
+  STATE.socket.on('call:ended', () => {
+    closeCallView();
+  });
+
+  // WebRTC signaling
+  STATE.socket.on('webrtc:offer', async (data) => {
+    STATE.peerSocketId = data.fromSocketId;
+    if (!STATE.peerConnection) await startCall(false);
+    await STATE.peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+    const answer = await STATE.peerConnection.createAnswer();
+    await STATE.peerConnection.setLocalDescription(answer);
+    STATE.socket.emit('webrtc:answer', { targetSocketId: data.fromSocketId, answer });
+  });
+
+  STATE.socket.on('webrtc:answer', async (data) => {
+    await STATE.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+  });
+
+  STATE.socket.on('webrtc:ice-candidate', async (data) => {
+    try {
+      await STATE.peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+    } catch(e) { console.warn('ICE candidate error:', e); }
+  });
+
+  // Capteur distant
+  STATE.socket.on('sensor:update', (data) => {
+    updateSensorDisplay(data);
+  });
+
+  // Chat texte via socket
+  STATE.socket.on('chat:message', (data) => {
+    appendChatMessage(data.from, data.text, false);
+  });
+}
+
+// ===================================================================
+// PATIENT : MÉDECINS
+// ===================================================================
+async function loadDoctors() {
+  try {
+    const res = await fetch('/api/doctors');
+    const doctors = await res.json();
+    const container = document.getElementById('doctors-list');
+    if (!doctors.length) {
+      container.innerHTML = '<div class="empty-state"><div class="icon">🏥</div>Aucun médecin disponible.<br><small>Inscrivez un médecin pour commencer.</small></div>';
+      return;
+    }
+    container.innerHTML = doctors.map(d => `
+      <div class="doctor-card">
+        <div class="doc-avatar">🩺</div>
+        <div class="doc-info">
+          <div class="doc-name">Dr. ${d.name}</div>
+          <div class="doc-specialty">${d.specialty}</div>
+          ${d.description ? `<div style="font-size:0.83rem;color:var(--text-muted);margin-top:3px">${d.description}</div>` : ''}
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="selectDoctor('${d.id}','${d.name}')">Prendre RDV</button>
+      </div>
+    `).join('');
+  } catch(e) { console.error(e); }
+}
+
+function selectDoctor(doctorId, doctorName) {
+  STATE.selectedDoctorId = doctorId;
+  STATE.selectedDoctorName = doctorName;
+  document.getElementById('selected-doctor-name').textContent = 'Dr. ' + doctorName;
+  document.getElementById('slot-picker').style.display = 'block';
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('slot-date').value = today;
+  loadSlots();
+  document.getElementById('slot-picker').scrollIntoView({ behavior:'smooth' });
+}
+
+async function loadSlots() {
+  const date = document.getElementById('slot-date').value;
+  const container = document.getElementById('slots-container');
+  if (!date || !STATE.selectedDoctorId) return;
+  container.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+
+  try {
+    const res = await fetch(`/api/doctors/${STATE.selectedDoctorId}/slots?date=${date}`);
+    const slots = await res.json();
+    if (!slots.length) {
+      container.innerHTML = '<div class="empty-state"><div class="icon">😔</div>Aucun créneau disponible ce jour.</div>';
+      return;
+    }
+    container.innerHTML = `<div class="slots-grid">${slots.map(s => 
+      `<button class="slot-btn" onclick="bookSlot('${s.start}','${s.end}',this)">${s.startTimeFormatted}</button>`
+    ).join('')}</div>`;
+  } catch(e) { container.innerHTML = '<div class="alert alert-error">Erreur de chargement.</div>'; }
+}
+
+async function bookSlot(start, end, btn) {
+  document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  
+  if (!confirm(`Confirmer le RDV du ${new Date(start).toLocaleDateString('fr-FR')} à ${new Date(start).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})} avec Dr. ${STATE.selectedDoctorName} ?`)) return;
+
+  try {
+    const res = await fetch('/api/appointments', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        patientId: STATE.user.id, patientName: STATE.user.name,
+        doctorId: STATE.selectedDoctorId, doctorName: STATE.selectedDoctorName,
+        start, end
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert('✅ Rendez-vous confirmé !');
+      document.getElementById('slot-picker').style.display = 'none';
+      loadPatientAppointments();
+      showPatientTab('appointments');
+    } else {
+      alert('❌ ' + data.message);
+    }
+  } catch(e) { alert('Erreur réseau.'); }
+}
+
+// ===================================================================
+// PATIENT : RENDEZ-VOUS
+// ===================================================================
+async function loadPatientAppointments() {
+  try {
+    const res = await fetch(`/api/patients/${STATE.user.id}/appointments`);
+    const appts = await res.json();
+    const container = document.getElementById('patient-appointments');
+    const upcoming = appts.filter(a => a.status !== 'completed' && a.status !== 'cancelled');
+    
+    if (!upcoming.length) {
+      container.innerHTML = '<div class="empty-state"><div class="icon">📭</div>Aucun rendez-vous à venir.<br><small>Réservez un créneau dans l\'onglet Médecins.</small></div>';
+      return;
+    }
+    container.innerHTML = upcoming.map(a => {
+      const dt = new Date(a.start);
+      return `
+        <div class="appt-item upcoming" id="appt-${a.id}">
+          <div>
+            <div class="appt-date">Dr. ${a.doctorName}</div>
+            <div class="appt-meta">📅 ${dt.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})} à ${dt.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</div>
+          </div>
+          <div class="appt-actions">
+            <button class="btn btn-accent btn-sm" onclick="startConsultationAsPatient('${a.id}','${a.doctorId}','${a.doctorName}')">📹 Démarrer consultation</button>
+            <button class="btn btn-sm" style="background:#fdecea;color:var(--danger)" onclick="cancelAppointment('${a.id}')">Annuler</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch(e) { console.error(e); }
+}
+
+async function cancelAppointment(id) {
+  if (!confirm('Annuler ce rendez-vous ?')) return;
+  await fetch(`/api/appointments/${id}`, { method:'DELETE' });
+  loadPatientAppointments();
+}
+
+function startConsultationAsPatient(appointmentId, doctorId, doctorName) {
+  STATE.socket.emit('call:request', {
+    appointmentId, patientId: STATE.user.id, patientName: STATE.user.name,
+    doctorId, doctorName
+  });
+  showCallView(`Consultation avec Dr. ${doctorName}`);
+  document.getElementById('call-status-text').textContent = 'En attente du médecin...';
+}
+
+// ===================================================================
+// MÉDECIN : RENDEZ-VOUS
+// ===================================================================
+async function loadDoctorAppointments() {
+  try {
+    const res = await fetch(`/api/doctors/${STATE.user.doctorId}/appointments`);
+    const appts = await res.json();
+    const container = document.getElementById('doctor-appointments');
+    const upcoming = appts.filter(a => a.status !== 'completed' && a.status !== 'cancelled');
+    
+    if (!upcoming.length) {
+      container.innerHTML = '<div class="empty-state"><div class="icon">📭</div>Aucun rendez-vous à venir.</div>';
+      return;
+    }
+    container.innerHTML = upcoming.map(a => {
+      const dt = new Date(a.start);
+      return `
+        <div class="appt-item upcoming">
+          <div>
+            <div class="appt-date">${a.patientName}</div>
+            <div class="appt-meta">📅 ${dt.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})} à ${dt.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</div>
+          </div>
+          <div class="appt-actions">
+            <button class="btn btn-accent btn-sm" onclick="startConsultationAsDoctor('${a.id}','${a.patientId}','${a.patientName}')">📹 Démarrer consultation</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch(e) { console.error(e); }
+}
+
+function startConsultationAsDoctor(appointmentId, patientId, patientName) {
+  STATE.socket.emit('call:request', {
+    appointmentId, patientId, patientName,
+    doctorId: STATE.user.doctorId, doctorName: STATE.user.name
+  });
+  showCallView(`Consultation avec ${patientName}`);
+  document.getElementById('call-status-text').textContent = 'En attente du patient...';
+}
+
+async function addUnavailability() {
+  const date = document.getElementById('unavail-date').value;
+  if (!date) { document.getElementById('unavail-msg').innerHTML = '<div class="alert alert-error">Sélectionnez une date.</div>'; return; }
+  try {
+    const res = await fetch(`/api/doctors/${STATE.user.doctorId}/exceptions`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({date})
+    });
+    const data = await res.json();
+    document.getElementById('unavail-msg').innerHTML = data.success 
+      ? `<div class="alert alert-success">Indisponibilité ajoutée pour le ${new Date(date).toLocaleDateString('fr-FR')}.</div>`
+      : '<div class="alert alert-error">Erreur.</div>';
+  } catch(e) { console.error(e); }
+}
+
+// ===================================================================
+// APPEL ENTRANT
+// ===================================================================
+function acceptCall() {
+  const data = STATE.pendingCallData;
+  if (!data) return;
+  document.getElementById('incoming-call-overlay').classList.remove('active');
+  
+  STATE.socket.emit('call:accept', {
+    callId: data.callId,
+    doctorId: data.doctorId, doctorName: data.doctorName,
+    patientSocketId: data.fromSocketId
+  });
+  
+  showCallView(`Consultation avec ${data.patientName || data.doctorName}`);
+  STATE.pendingCallData = null;
+}
+
+function rejectCall() {
+  const data = STATE.pendingCallData;
+  if (data) STATE.socket.emit('call:reject', { callId: data.callId });
+  document.getElementById('incoming-call-overlay').classList.remove('active');
+  STATE.pendingCallData = null;
+}
+
+// ===================================================================
+// WEBRTC
+// ===================================================================
+async function startCall(isInitiator) {
+  // Obtenir le flux local
+  try {
+    STATE.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    document.getElementById('local-video').srcObject = STATE.localStream;
+    document.getElementById('call-status-text').textContent = 'Caméra active – connexion WebRTC...';
+  } catch(e) {
+    console.warn('Caméra/micro non disponible:', e.message);
+    document.getElementById('call-status-text').textContent = 'Pas de caméra – audio seulement';
+    // Créer un flux vide pour quand même établir la connexion
+    STATE.localStream = null;
+  }
+
+  // Créer RTCPeerConnection avec STUN + TURN
+  STATE.peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+  // Ajouter les pistes locales
+  if (STATE.localStream) {
+    STATE.localStream.getTracks().forEach(track => {
+      STATE.peerConnection.addTrack(track, STATE.localStream);
+    });
+  }
+
+  // Afficher la vidéo distante
+  STATE.peerConnection.ontrack = (event) => {
+    const remoteVideo = document.getElementById('remote-video');
+    remoteVideo.srcObject = event.streams[0];
+    remoteVideo.style.display = 'block';
+    document.getElementById('no-video-remote').style.display = 'none';
+    document.getElementById('call-status-text').textContent = 'Consultation en cours ✓';
+  };
+
+  // ICE candidates
+  STATE.peerConnection.onicecandidate = (event) => {
+    if (event.candidate) {
+      STATE.socket.emit('webrtc:ice-candidate', {
+        targetSocketId: STATE.peerSocketId,
+        candidate: event.candidate
+      });
+    }
+  };
+
+  STATE.peerConnection.oniceconnectionstatechange = () => {
+    const state = STATE.peerConnection?.iceConnectionState;
+    console.log('ICE state:', state);
+    if (state === 'connected' || state === 'completed') {
+      document.getElementById('call-status-text').textContent = 'Connexion établie ✓';
+      startCallTimer();
+      startSensorSimulation();
+    } else if (state === 'failed') {
+      document.getElementById('call-status-text').textContent = 'Erreur de connexion WebRTC';
+    }
+  };
+
+  // Data channel pour le chat texte
+  if (isInitiator) {
+    STATE.chatChannel = STATE.peerConnection.createDataChannel('chat');
+    setupDataChannel(STATE.chatChannel);
+  } else {
+    STATE.peerConnection.ondatachannel = (event) => {
+      STATE.chatChannel = event.channel;
+      setupDataChannel(STATE.chatChannel);
+    };
+  }
+
+  // Créer l'offre si initiateur
+  if (isInitiator) {
+    const offer = await STATE.peerConnection.createOffer();
+    await STATE.peerConnection.setLocalDescription(offer);
+    STATE.socket.emit('webrtc:offer', { targetSocketId: STATE.peerSocketId, offer });
+  }
+}
+
+function setupDataChannel(channel) {
+  channel.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === 'chat') appendChatMessage(data.from, data.text, false);
+  };
+}
+
+// ===================================================================
+// CALL CONTROLS
+// ===================================================================
+function toggleAudio() {
+  if (!STATE.localStream) return;
+  STATE.audioMuted = !STATE.audioMuted;
+  STATE.localStream.getAudioTracks().forEach(t => t.enabled = !STATE.audioMuted);
+  const btn = document.getElementById('btn-mute-audio');
+  btn.textContent = STATE.audioMuted ? '🔇' : '🎤';
+  btn.classList.toggle('muted', STATE.audioMuted);
+}
+
+function toggleVideo() {
+  if (!STATE.localStream) return;
+  STATE.videoMuted = !STATE.videoMuted;
+  STATE.localStream.getVideoTracks().forEach(t => t.enabled = !STATE.videoMuted);
+  const btn = document.getElementById('btn-mute-video');
+  btn.textContent = STATE.videoMuted ? '🚫' : '📹';
+  btn.classList.toggle('muted', STATE.videoMuted);
+}
+
+function toggleSensor() {
+  STATE.sensorActive = !STATE.sensorActive;
+  const btn = document.getElementById('btn-sensor');
+  btn.style.background = STATE.sensorActive ? 'rgba(255,255,255,0.1)' : 'rgba(231,76,60,0.4)';
+  if (!STATE.sensorActive) {
+    clearInterval(STATE.sensorInterval);
+    STATE.sensorInterval = null;
+  } else {
+    startSensorSimulation();
+  }
+}
+
+function sendChatMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  
+  appendChatMessage(STATE.user.name, text, true);
+  
+  // Envoyer via data channel si disponible
+  if (STATE.chatChannel && STATE.chatChannel.readyState === 'open') {
+    STATE.chatChannel.send(JSON.stringify({ type:'chat', from: STATE.user.name, text }));
+  }
+  // Fallback via socket
+  STATE.socket.emit('chat:message', { callId: STATE.currentCallId, from: STATE.user.name, text });
+  input.value = '';
+}
+
+function appendChatMessage(from, text, isMe) {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg';
+  div.innerHTML = `<span class="from ${isMe?'me':''}">${from}:</span>${text}`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function endCall() {
+  if (STATE.currentCallId) {
+    STATE.socket.emit('call:end', { callId: STATE.currentCallId });
+  }
+  closeCallView();
+}
+
+function showCallView(title) {
+  document.getElementById('call-title').textContent = title;
+  document.getElementById('call-view').classList.add('active');
+  document.getElementById('call-status-text').textContent = 'Initialisation...';
+  document.getElementById('chat-messages').innerHTML = '';
+}
+
+function closeCallView() {
+  document.getElementById('call-view').classList.remove('active');
+  document.getElementById('incoming-call-overlay').classList.remove('active');
+  
+  // Cleanup
+  if (STATE.sensorInterval) { clearInterval(STATE.sensorInterval); STATE.sensorInterval = null; }
+  if (STATE.callTimerInterval) { clearInterval(STATE.callTimerInterval); STATE.callTimerInterval = null; }
+  if (STATE.peerConnection) { STATE.peerConnection.close(); STATE.peerConnection = null; }
+  if (STATE.localStream) { STATE.localStream.getTracks().forEach(t => t.stop()); STATE.localStream = null; }
+  
+  STATE.currentCallId = null;
+  STATE.peerSocketId = null;
+  STATE.hrHistory = [];
+  document.getElementById('call-timer').textContent = '00:00';
+  document.getElementById('remote-video').style.display = 'none';
+  document.getElementById('no-video-remote').style.display = 'flex';
+  document.getElementById('fhir-output').style.display = 'none';
+  
+  // Reset sensors
+  ['s-hr','s-temp','s-spo2'].forEach(id => document.getElementById(id).textContent = '--');
+
+  // Refresh
+  if (STATE.user?.role === 'patient') loadPatientAppointments();
+  else loadDoctorAppointments();
+}
+
+// ===================================================================
+// CALL TIMER
+// ===================================================================
+function startCallTimer() {
+  STATE.callStartTime = Date.now();
+  STATE.callTimerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - STATE.callStartTime) / 1000);
+    const m = String(Math.floor(elapsed/60)).padStart(2,'0');
+    const s = String(elapsed%60).padStart(2,'0');
+    document.getElementById('call-timer').textContent = `${m}:${s}`;
+  }, 1000);
+}
+
+// ===================================================================
+// PSEUDO-CAPTEUR SIMULÉ (section 3.4 du projet)
+// ===================================================================
+function startSensorSimulation() {
+  if (STATE.sensorInterval) return;
+  
+  // Valeurs initiales réalistes
+  let baseHR = 72 + Math.random()*10;
+  let baseTemp = 36.5 + Math.random()*0.5;
+  let baseSpo2 = 97 + Math.random()*2;
+
+  STATE.sensorInterval = setInterval(() => {
+    // Simulation avec variations réalistes (marche aléatoire bornée)
+    baseHR = Math.max(55, Math.min(120, baseHR + (Math.random()-0.5)*4));
+    baseTemp = Math.max(35.5, Math.min(40, baseTemp + (Math.random()-0.5)*0.1));
+    baseSpo2 = Math.max(90, Math.min(100, baseSpo2 + (Math.random()-0.5)*0.5));
+
+    const data = {
+      callId: STATE.currentCallId,
+      heartRate: Math.round(baseHR),
+      temperature: Math.round(baseTemp*10)/10,
+      spo2: Math.round(baseSpo2*10)/10,
+      timestamp: Date.now()
+    };
+
+    STATE.lastFhirData = data;
+    updateSensorDisplay(data);
+
+    // Envoyer au pair via socket
+    if (STATE.socket && STATE.currentCallId) {
+      STATE.socket.emit('sensor:data', data);
+    }
+
+    // Mise à jour graphique
+    updateHRChart(data.heartRate);
+
+  }, 2000); // mise à jour toutes les 2s
+}
+
+function updateSensorDisplay(data) {
+  // Fréquence cardiaque
+  if (data.heartRate !== undefined) {
+    document.getElementById('s-hr').textContent = data.heartRate;
+    const hrStatus = document.getElementById('s-hr-status');
+    const isNormal = data.heartRate >= 60 && data.heartRate <= 100;
+    hrStatus.textContent = isNormal ? 'Normal' : (data.heartRate < 60 ? 'Bradycardie' : 'Tachycardie');
+    hrStatus.className = 'sensor-status ' + (isNormal ? 'normal' : 'alert');
+  }
+
+  // Température
+  if (data.temperature !== undefined) {
+    document.getElementById('s-temp').textContent = data.temperature.toFixed(1);
+    const tempStatus = document.getElementById('s-temp-status');
+    const tempNormal = data.temperature < 37.8;
+    tempStatus.textContent = tempNormal ? 'Normal' : 'Fièvre';
+    tempStatus.className = 'sensor-status ' + (tempNormal ? 'normal' : 'alert');
+  }
+
+  // SpO2
+  if (data.spo2 !== undefined) {
+    document.getElementById('s-spo2').textContent = data.spo2.toFixed(1);
+    const spo2Status = document.getElementById('s-spo2-status');
+    const spo2Normal = data.spo2 >= 95;
+    spo2Status.textContent = spo2Normal ? 'Normal' : 'Hypoxie';
+    spo2Status.className = 'sensor-status ' + (spo2Normal ? 'normal' : 'alert');
+  }
+}
+
+// ===================================================================
+// GRAPHIQUE FC (mini)
+// ===================================================================
+let hrCtx = null;
+function updateHRChart(value) {
+  const canvas = document.getElementById('hrChart');
+  if (!canvas) return;
+  
+  if (!hrCtx) hrCtx = canvas.getContext('2d');
+  
+  STATE.hrHistory.push(value);
+  if (STATE.hrHistory.length > 30) STATE.hrHistory.shift();
+
+  canvas.width = canvas.offsetWidth || 600;
+  canvas.height = 60;
+  
+  const ctx = hrCtx;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  if (STATE.hrHistory.length < 2) return;
+  
+  const min = Math.min(...STATE.hrHistory) - 5;
+  const max = Math.max(...STATE.hrHistory) + 5;
+  const w = canvas.width / (STATE.hrHistory.length - 1);
+  
+  // Grille
+  ctx.strokeStyle = 'rgba(255,107,107,0.1)';
+  ctx.lineWidth = 1;
+  for (let y of [0.25, 0.5, 0.75]) {
+    ctx.beginPath(); ctx.moveTo(0, y*canvas.height); ctx.lineTo(canvas.width, y*canvas.height); ctx.stroke();
+  }
+  
+  // Ligne FC
+  ctx.beginPath();
+  ctx.strokeStyle = '#ff6b6b';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  STATE.hrHistory.forEach((v, i) => {
+    const x = i * w;
+    const y = canvas.height - ((v-min)/(max-min)) * canvas.height;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  
+  // Point courant
+  const lastX = (STATE.hrHistory.length-1) * w;
+  const lastY = canvas.height - ((value-min)/(max-min)) * canvas.height;
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 4, 0, Math.PI*2);
+  ctx.fillStyle = '#ff6b6b';
+  ctx.fill();
+}
+
+// ===================================================================
+// FHIR (section 3.5 du projet)
+// ===================================================================
+async function generateFHIR() {
+  if (!STATE.lastFhirData) {
+    alert('Aucune donnée capteur disponible. La simulation doit être active.');
+    return;
+  }
+  
+  const { heartRate, temperature, spo2 } = STATE.lastFhirData;
+  
+  try {
+    const res = await fetch('/api/fhir/observation', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        patientId: STATE.user?.role === 'patient' ? STATE.user.id : STATE.pendingCallData?.patientId || 'unknown',
+        patientName: STATE.user?.role === 'patient' ? STATE.user.name : 'Patient',
+        heartRate, temperature, spo2
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('fhir-json').textContent = JSON.stringify(data.observations, null, 2);
+      document.getElementById('fhir-output').style.display = 'block';
+    }
+  } catch(e) {
+    // Générer en local si API échoue
+    const obs = buildFhirObservationLocal(heartRate, temperature, spo2);
+    document.getElementById('fhir-json').textContent = JSON.stringify(obs, null, 2);
+    document.getElementById('fhir-output').style.display = 'block';
+  }
+}
+
+function buildFhirObservationLocal(hr, temp, spo2) {
+  const now = new Date().toISOString();
+  const patId = STATE.user?.id || 'patient-1';
+  const patName = STATE.user?.name || 'Patient';
+  
+  return [
+    {
+      resourceType: "Observation",
+      id: `hr-${Date.now()}`,
+      status: "final",
+      category: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/observation-category", code: "vital-signs", display: "Vital Signs" }] }],
+      code: { coding: [{ system: "http://loinc.org", code: "8867-4", display: "Heart rate" }], text: "Fréquence cardiaque" },
+      subject: { reference: `Patient/${patId}`, display: patName },
+      effectiveDateTime: now,
+      valueQuantity: { value: hr, unit: "beats/minute", system: "http://unitsofmeasure.org", code: "/min" },
+      interpretation: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", code: hr<60?"L":hr>100?"H":"N", display: hr<60?"Low":hr>100?"High":"Normal" }] }]
+    },
+    {
+      resourceType: "Observation",
+      id: `temp-${Date.now()+1}`,
+      status: "final",
+      category: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/observation-category", code: "vital-signs", display: "Vital Signs" }] }],
+      code: { coding: [{ system: "http://loinc.org", code: "8310-5", display: "Body temperature" }], text: "Température corporelle" },
+      subject: { reference: `Patient/${patId}`, display: patName },
+      effectiveDateTime: now,
+      valueQuantity: { value: temp, unit: "degree Celsius", system: "http://unitsofmeasure.org", code: "Cel" },
+      interpretation: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", code: temp>37.8?"H":"N", display: temp>37.8?"High":"Normal" }] }]
+    },
+    {
+      resourceType: "Observation",
+      id: `spo2-${Date.now()+2}`,
+      status: "final",
+      category: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/observation-category", code: "vital-signs", display: "Vital Signs" }] }],
+      code: { coding: [{ system: "http://loinc.org", code: "2708-6", display: "Oxygen saturation in Arterial blood" }], text: "Saturation en oxygène (SpO2)" },
+      subject: { reference: `Patient/${patId}`, display: patName },
+      effectiveDateTime: now,
+      valueQuantity: { value: spo2, unit: "%", system: "http://unitsofmeasure.org", code: "%" },
+      bodySite: { coding: [{ system: "http://snomed.info/sct", code: "7569003", display: "Finger structure (body structure)" }] },
+      interpretation: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", code: spo2<95?"L":"N", display: spo2<95?"Low":"Normal" }] }]
+    }
+  ];
+}
+
+function toggleFhirOutput() {
+  const el = document.getElementById('fhir-output');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function copyFhirJson() {
+  const text = document.getElementById('fhir-json').textContent;
+  navigator.clipboard.writeText(text).then(() => alert('JSON FHIR copié dans le presse-papiers !'));
+}
+
+// ===================================================================
+// NAVIGATION TABS
+// ===================================================================
+function showPatientTab(name) {
+  document.querySelectorAll('#patient-tabs .tab').forEach((t,i) => {
+    t.classList.toggle('active', ['doctors','appointments','history'][i] === name);
+  });
+  document.querySelectorAll('#patient-dashboard .view').forEach(v => v.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'appointments') loadPatientAppointments();
+}
+
+function showDoctorTab(name) {
+  document.querySelectorAll('#doctor-dashboard .tab').forEach((t,i) => {
+    t.classList.toggle('active', ['appointments','unavailability','history'][i] === name);
+  });
+  document.querySelectorAll('#doctor-dashboard .view').forEach(v => v.classList.remove('active'));
+  document.getElementById('tab-doc-' + name).classList.add('active');
+  if (name === 'appointments') loadDoctorAppointments();
+}
+</script>
 </body>
 </html>
