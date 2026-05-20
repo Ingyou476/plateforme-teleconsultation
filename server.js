@@ -8,7 +8,7 @@ const os = require('os');
 const app = express();
 const PORT = 3443;
 
-// Chemins SSL (à adapter à votre VM)
+// --- Chemins SSL (à adapter à ta VM) ---
 const SSL_KEY_PATH = '/home/iut/certs/192.168.23.129-key.pem';
 const SSL_CERT_PATH = '/home/iut/certs/192.168.23.129.pem';
 
@@ -31,6 +31,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const users = [];
 const doctors = [];
 const appointments = [];
+const consultationHistory = []; // AJOUT : Stockage de l'historique requis par le sujet
 
 // ---------- API ----------
 app.post('/api/register', (req, res) => {
@@ -49,18 +50,6 @@ app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
     const user = users.find(u => u.email === email && u.password === password);
     if (!user) return res.status(401).json({ success: false, message: 'Identifiants invalides' });
-
-    // === SUPPRESSION DE LA LOGIQUE FORCE-LOGOUT ===
-    // Permet plusieurs onglets/machines avec le même compte
-    // (commentée)
-    /*
-    const oldSocketId = activeSessions.get(user.id);
-    if (oldSocketId) {
-        const oldSocket = io.sockets.sockets.get(oldSocketId);
-        if (oldSocket) oldSocket.emit('force-logout', { message: 'Quelqu\'un s\'est connecté avec votre compte' });
-        activeSessions.delete(user.id);
-    }
-    */
 
     let doctorId = null;
     if (user.role === 'medecin') {
@@ -127,7 +116,17 @@ app.delete('/api/appointments/:appointmentId', (req, res) => {
     res.json({ success: true });
 });
 
-// ---------- WebSocket (signalisation) ----------
+// AJOUT : Points de terminaison pour l'historique des consultations
+app.post('/api/history', (req, res) => {
+    consultationHistory.push(req.body);
+    res.json({ success: true });
+});
+
+app.get('/api/history', (req, res) => {
+    res.json(consultationHistory);
+});
+
+// ---------- WebSocket (signalisation & messagerie) ----------
 const activeCalls = new Map();
 
 io.on('connection', (socket) => {
@@ -167,6 +166,12 @@ io.on('connection', (socket) => {
     socket.on('webrtc:ice-candidate', (data) => {
         io.to(data.targetSocketId).emit('webrtc:ice-candidate', { candidate: data.candidate, fromSocketId: socket.id });
     });
+
+    // AJOUT : Relais pour la messagerie textuelle instantanée (Chat)
+    socket.on('chat:message', (data) => {
+        io.to(data.targetSocketId).emit('chat:message', { msg: data.msg });
+    });
+
     socket.on('call:end', (data) => {
         const call = activeCalls.get(data.callId);
         if (call) {
@@ -189,5 +194,5 @@ function getLocalIp() {
 
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🔒 Serveur HTTPS démarré sur https://${getLocalIp()}:${PORT}`);
-    console.log(`📅 Prise de rendez-vous, WebRTC avec TURN actif.\n`);
+    console.log(`📅 Prise de rendez-vous, WebRTC, Historique, Chat et FHIR opérationnels.\n`);
 });

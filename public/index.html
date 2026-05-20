@@ -9,10 +9,13 @@
         body { font-family: 'Segoe UI', sans-serif; background: #eef2f5; padding: 20px; }
         .container { max-width: 1200px; margin: auto; }
         .card { background: white; border-radius: 24px; padding: 24px; margin-bottom: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        h1, h2, h3 { color: #1e2a3e; }
-        button { background: #2c7da0; color: white; border: none; padding: 8px 16px; border-radius: 40px; cursor: pointer; }
+        h1, h2, h3, h4 { color: #1e2a3e; margin-bottom: 10px; }
+        button { background: #2c7da0; color: white; border: none; padding: 8px 16px; border-radius: 40px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #1a5f7a; }
         .btn-danger { background: #e63946; }
+        .btn-danger:hover { background: #b82e38; }
         .btn-success { background: #2a9d8f; }
+        .btn-success:hover { background: #1f766b; }
         .flex { display: flex; gap: 20px; flex-wrap: wrap; }
         .doctor-card { border: 1px solid #dee2e6; border-radius: 20px; padding: 16px; margin-bottom: 12px; cursor: pointer; }
         .doctor-card.selected { background: #d4edda; border-color: #2a9d8f; }
@@ -23,11 +26,12 @@
         video { width: 100%; max-width: 400px; border-radius: 20px; background: #000; transform: scaleX(-1); }
         .video-container { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
         .sensor-card { background: #e9ecef; border-radius: 20px; padding: 16px; margin-top: 20px; }
-        .fhir-box { background: #1e2a3e; color: #f8f9fa; padding: 12px; border-radius: 12px; font-family: monospace; font-size: 12px; overflow-x: auto; }
+        .fhir-box { background: #1e2a3e; color: #f8f9fa; padding: 12px; border-radius: 12px; font-family: monospace; font-size: 12px; overflow-x: auto; max-height: 200px; text-align: left;}
         .hidden { display: none; }
         .error { color: #e63946; background: #ffe5e5; padding: 10px; border-radius: 12px; margin-bottom: 12px; }
         .success { color: #2a9d8f; background: #e0f2f1; padding: 10px; border-radius: 12px; margin-bottom: 12px; }
         .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .chat-box { height: 150px; overflow-y: auto; background: white; border: 1px solid #dee2e6; padding: 10px; border-radius: 12px; margin-bottom: 10px; text-align: left; }
     </style>
 </head>
 <body>
@@ -42,21 +46,21 @@
         <div class="flex">
             <div style="flex:1">
                 <h3>Connexion</h3>
-                <input type="email" id="loginEmail" placeholder="Email" style="width:100%; margin-bottom:8px"><br>
-                <input type="password" id="loginPassword" placeholder="Mot de passe" style="width:100%; margin-bottom:8px"><br>
+                <input type="email" id="loginEmail" placeholder="Email" style="width:100%; padding:8px; margin-bottom:8px"><br>
+                <input type="password" id="loginPassword" placeholder="Mot de passe" style="width:100%; padding:8px; margin-bottom:8px"><br>
                 <button id="loginBtn">Se connecter</button>
             </div>
             <div style="flex:1">
                 <h3>Inscription</h3>
-                <input type="text" id="regName" placeholder="Nom complet" style="width:100%; margin-bottom:8px"><br>
-                <input type="email" id="regEmail" placeholder="Email" style="width:100%; margin-bottom:8px"><br>
-                <input type="password" id="regPassword" placeholder="Mot de passe" style="width:100%; margin-bottom:8px"><br>
-                <select id="regRole" style="width:100%; margin-bottom:8px">
+                <input type="text" id="regName" placeholder="Nom complet" style="width:100%; padding:8px; margin-bottom:8px"><br>
+                <input type="email" id="regEmail" placeholder="Email" style="width:100%; padding:8px; margin-bottom:8px"><br>
+                <input type="password" id="regPassword" placeholder="Mot de passe" style="width:100%; padding:8px; margin-bottom:8px"><br>
+                <select id="regRole" style="width:100%; padding:8px; margin-bottom:8px">
                     <option value="patient">Patient</option>
                     <option value="medecin">Médecin</option>
                 </select>
                 <div id="doctorFields" class="hidden">
-                    <input type="text" id="regSpecialty" placeholder="Spécialité" style="width:100%; margin-bottom:8px">
+                    <input type="text" id="regSpecialty" placeholder="Spécialité" style="width:100%; padding:8px; margin-bottom:8px">
                 </div>
                 <button id="registerBtn">S'inscrire</button>
             </div>
@@ -85,6 +89,7 @@
     let sensorInterval = null;
     let selectedDoctorId = null, selectedDoctorName = null;
     let currentDate = new Date().toISOString().slice(0,10);
+    let bpmHistory = []; // AJOUT : Tableau pour mémoriser les battements cardiaques
 
     function showMsg(divId, msg, isError = true) {
         const div = document.getElementById(divId);
@@ -146,28 +151,36 @@
         if (socket) socket.disconnect();
         socket = io();
         socket.on('connect', () => socket.emit('register', { userId: currentUser.id, userName: currentUser.name, role: currentUser.role }));
+        
         socket.on('call:incoming', (data) => {
             if (currentUser.role !== 'medecin') return;
             if (confirm(`Appel de ${data.patientName} ?`)) {
                 socket.emit('call:accept', { callId: data.callId, doctorId: currentUser.doctorId, doctorName: currentUser.name, patientSocketId: data.fromSocketId });
-            } else {
-                socket.emit('call:reject', { callId: data.callId, patientSocketId: data.fromSocketId });
             }
         });
+        
         socket.on('call:accepted', async (data) => {
             activeCallId = data.callId;
             targetSocketId = data.doctorSocketId;
             await startCall(true);
         });
+        
         socket.on('webrtc:ready', async (data) => {
             activeCallId = data.callId;
             targetSocketId = data.patientSocketId;
             await startCall(false);
         });
+        
         socket.on('webrtc:offer', async (data) => await handleOffer(data));
         socket.on('webrtc:answer', async (data) => await handleAnswer(data));
         socket.on('webrtc:ice-candidate', async (data) => await handleIceCandidate(data));
-        socket.on('call:ended', () => endCall());
+        
+        // AJOUT : Écouteur Socket.IO pour la réception des messages du Chat
+        socket.on('chat:message', (data) => {
+            appendChatMessage(data.msg);
+        });
+        
+        socket.on('call:ended', () => cleanCallUI());
     }
 
     async function startCall(isInitiator) {
@@ -185,19 +198,48 @@
                 } else throw new Error("dashboardContent introuvable");
             }
 
+            // AJOUT : Intégration complète de l'interface de messagerie et du canvas de graphique
             container.innerHTML = `
-                <div class="video-container">
-                    <div><h3>Vous</h3><video id="localVideo" autoplay muted playsinline style="width:100%; max-width:400px"></video></div>
-                    <div><h3>Correspondant</h3><video id="remoteVideo" autoplay playsinline style="width:100%; max-width:400px"></video></div>
+                <div class="video-container" style="margin-bottom:20px;">
+                    <div><h3>Vous</h3><video id="localVideo" autoplay muted playsinline style="max-width:300px"></video></div>
+                    <div><h3>Correspondant</h3><video id="remoteVideo" autoplay playsinline style="max-width:300px"></video></div>
                 </div>
-                <div style="text-align:center; margin-top:16px"><button class="btn-danger" id="hangupBtn">Raccrocher</button></div>
-                <div class="sensor-card">
-                    <h3>📊 Télésurveillance (simulation)</h3>
-                    <div id="heartRate" style="font-size:2rem; font-weight:bold;">-- BPM</div>
-                    <div id="fhirJson" class="fhir-box"></div>
+                
+                <div class="card" style="border: 1px solid #ccc;">
+                    <h3>💬 Messagerie de consultation</h3>
+                    <div id="chatBox" class="chat-box"></div>
+                    <div class="flex">
+                        <input type="text" id="chatInput" placeholder="Écrire un message..." style="flex:1; padding:8px; border-radius:10px; border:1px solid #ccc;">
+                        <button id="sendChatBtn" class="btn-success">Envoyer</button>
+                    </div>
+                </div>
+
+                <div style="text-align:center; margin:16px 0;"><button class="btn-danger" id="hangupBtn">Terminer la consultation</button></div>
+                
+                <div class="flex">
+                    <div class="sensor-card" style="flex:1; min-width:280px;">
+                        <h3>📊 Télésurveillance (Simulation)</h3>
+                        <div id="heartRate" style="font-size:2.5rem; font-weight:bold; color:#e63946; margin-bottom:10px;">-- BPM</div>
+                        <div id="fhirJson" class="fhir-box"></div>
+                    </div>
+                    <div class="sensor-card" style="flex:1; min-width:280px; text-align:center;">
+                        <h3>📈 Graphique Rythme Cardiaque</h3>
+                        <canvas id="bpmChart" width="300" height="150" style="background:white; border-radius:16px; max-width:100%;"></canvas>
+                    </div>
                 </div>
             `;
+            
             document.getElementById('hangupBtn').onclick = () => endCall();
+            
+            // Configuration de l'envoi des messages
+            document.getElementById('sendChatBtn').onclick = () => {
+                const input = document.getElementById('chatInput');
+                if(!input.value) return;
+                const msg = { from: currentUser.name, text: input.value };
+                socket.emit('chat:message', { targetSocketId, msg });
+                appendChatMessage(msg);
+                input.value = '';
+            };
 
             const localVideo = document.getElementById('localVideo');
             const remoteVideo = document.getElementById('remoteVideo');
@@ -205,9 +247,11 @@
 
             peerConnection = new RTCPeerConnection(ICE_CONFIG);
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+            
             peerConnection.ontrack = event => {
                 if (remoteVideo) remoteVideo.srcObject = event.streams[0];
             };
+            
             peerConnection.onicecandidate = event => {
                 if (event.candidate && targetSocketId) {
                     socket.emit('webrtc:ice-candidate', { targetSocketId, candidate: event.candidate });
@@ -223,8 +267,8 @@
             startSensorSimulation();
         } catch (err) {
             console.error(err);
-            alert("Erreur caméra: " + err.message + "\nVérifiez les permissions (cadenas)");
-            endCall();
+            alert("Erreur d'accès aux médias : " + err.message);
+            cleanCallUI();
         }
     }
 
@@ -235,20 +279,73 @@
         await peerConnection.setLocalDescription(answer);
         socket.emit('webrtc:answer', { targetSocketId: data.fromSocketId, answer });
     }
+    
     async function handleAnswer(data) {
         if (peerConnection && !peerConnection.currentRemoteDescription)
             await peerConnection.setRemoteDescription(data.answer);
     }
+    
     async function handleIceCandidate(data) {
         if (peerConnection) await peerConnection.addIceCandidate(data.candidate);
     }
-    function endCall() {
+
+    // AJOUT : Ajout visuel des messages dans la boîte de dialogue
+    function appendChatMessage(msg) {
+        const box = document.getElementById('chatBox');
+        if(box) {
+            box.innerHTML += `<div><strong>${msg.from}:</strong> ${msg.text}</div>`;
+            box.scrollTop = box.scrollHeight;
+        }
+    }
+
+    // AJOUT : Génération du tracé sur l'élément Canvas
+    function drawChart(newBpm) {
+        const canvas = document.getElementById('bpmChart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        
+        bpmHistory.push(newBpm);
+        if(bpmHistory.length > 10) bpmHistory.shift(); 
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#e63946';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        
+        const step = canvas.width / 10;
+        for(let i = 0; i < bpmHistory.length; i++) {
+            const y = canvas.height - ((bpmHistory[i] - 40) / 80) * canvas.height;
+            const x = i * step;
+            if(i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+
+    // AJOUT : Logique de coupure de l'appel et archivage immédiat des données
+    async function endCall() {
+        if(activeCallId && currentUser) {
+            await fetch('/api/history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    patientName: currentUser.name,
+                    date: new Date().toLocaleString(),
+                    avgBpm: bpmHistory.length ? Math.round(bpmHistory.reduce((a,b)=>a+b, 0) / bpmHistory.length) : 75
+                })
+            });
+        }
+        if (activeCallId) socket.emit('call:end', { callId: activeCallId });
+        cleanCallUI();
+    }
+
+    function cleanCallUI() {
         if (sensorInterval) clearInterval(sensorInterval);
         if (localStream) localStream.getTracks().forEach(t => t.stop());
         if (peerConnection) peerConnection.close();
-        if (activeCallId) socket.emit('call:end', { callId: activeCallId });
         activeCallId = targetSocketId = null;
         localStream = peerConnection = null;
+        bpmHistory = []; 
         const area = document.getElementById('consultationArea');
         if (area) area.innerHTML = '';
         if (currentUser.role === 'medecin') loadDoctorDashboard();
@@ -261,6 +358,9 @@
             const bpm = Math.floor(Math.random() * 41) + 60;
             const heartDiv = document.getElementById('heartRate');
             if (heartDiv) heartDiv.innerText = `${bpm} BPM`;
+            
+            drawChart(bpm); // Mise à jour immédiate du graphique
+
             const fhir = {
                 resourceType: "Observation",
                 status: "final",
@@ -275,7 +375,7 @@
             const fhirDiv = document.getElementById('fhirJson');
             if (fhirDiv) fhirDiv.innerHTML = `<pre>${JSON.stringify(fhir, null, 2)}</pre>`;
             if (targetSocketId) socket.emit('sensor:data', { targetSocketId, fhir });
-        }, 5000);
+        }, 3000);
     }
 
     // ---------- Médecin ----------
@@ -284,17 +384,23 @@
         const appointments = await res.json();
         document.getElementById('dashboardContent').innerHTML = `
             <h2>Dr. ${currentUser.name}</h2>
-            <h3>Rendez-vous</h3>
+            <h3>Rendez-vous prévus</h3>
             <div id="appointmentsList"></div>
             <div id="consultationArea"></div>
-        `;
-        document.getElementById('appointmentsList').innerHTML = appointments.map(a => `
-            <div class="slot">
-                <div>${a.patientName} le ${new Date(a.start).toLocaleString()}</div>
-                <button onclick="startDoctorCall('${a.id}','${a.patientId}','${a.patientName}')" class="btn-success">Démarrer</button>
+            <div class="card" style="margin-top:20px;">
+                <h3>📜 Suivi global de télésurveillance (Historique)</h3>
+                <div id="historyList">Chargement...</div>
             </div>
-        `).join('');
+        `;
+        document.getElementById('appointmentsList').innerHTML = appointments.length ? appointments.map(a => `
+            <div class="slot">
+                <div><strong>${a.patientName}</strong> - Le ${new Date(a.start).toLocaleString()}</div>
+                <button onclick="startDoctorCall('${a.id}','${a.patientId}','${a.patientName}')" class="btn-success">Démarrer l'appel WebRTC</button>
+            </div>
+        `).join('') : '<p>Aucun rendez-vous planifié.</p>';
+        loadHistory();
     }
+    
     window.startDoctorCall = (appId, patientId, patientName) => {
         socket.emit('call:request', { appointmentId: appId, patientId, patientName, doctorId: currentUser.doctorId, doctorName: currentUser.name });
     };
@@ -304,17 +410,23 @@
         const doctors = await (await fetch('/api/doctors')).json();
         const myApps = await (await fetch(`/api/patients/${currentUser.id}/appointments`)).json();
         document.getElementById('dashboardContent').innerHTML = `
-            <h2>Bonjour ${currentUser.name}</h2>
+            <h2>Espace Patient : Bonjour ${currentUser.name}</h2>
             <div class="flex">
-                <div style="flex:1"><h3>Médecins</h3><div id="doctorList"></div></div>
-                <div style="flex:2"><h3>Calendrier</h3><div id="calendarView"></div><div id="slotsView"></div></div>
+                <div style="flex:1; min-width:300px;"><h3>🩺 Liste des médecins</h3><div id="doctorList"></div></div>
+                <div style="flex:2; min-width:300px;"><h3>📅 Calendrier de réservation</h3><div id="calendarView"></div><div id="slotsView"></div></div>
             </div>
             <h3>Mes rendez-vous</h3>
             <div id="myAppointments"></div>
             <div id="consultationArea"></div>
+            <div class="card" style="margin-top:20px;">
+                <h3>📜 Mon historique de télésurveillance</h3>
+                <div id="historyList">Chargement...</div>
+            </div>
         `;
+        
         const docDiv = document.getElementById('doctorList');
-        docDiv.innerHTML = doctors.map(d => `<div class="doctor-card" data-id="${d.id}" data-name="${d.name}"><strong>${d.name}</strong><br>${d.specialty}</div>`).join('');
+        docDiv.innerHTML = doctors.map(d => `<div class="doctor-card" data-id="${d.id}" data-name="${d.name}"><strong>Dr. ${d.name}</strong><br>Spécialité : ${d.specialty}</div>`).join('');
+        
         document.querySelectorAll('.doctor-card').forEach(card => {
             card.onclick = () => {
                 selectedDoctorId = card.dataset.id;
@@ -324,13 +436,19 @@
                 renderCalendar();
             };
         });
-        document.getElementById('myAppointments').innerHTML = myApps.map(a => `
+        
+        document.getElementById('myAppointments').innerHTML = myApps.length ? myApps.map(a => `
             <div class="slot">
                 <div>Dr. ${a.doctorName} le ${new Date(a.start).toLocaleString()}</div>
-                <div><button onclick="cancelAppointment('${a.id}')">Annuler</button> <button onclick="joinAppointment('${a.id}','${a.doctorId}')" class="btn-success">Rejoindre</button></div>
+                <div>
+                    <button onclick="cancelAppointment('${a.id}')" class="btn-danger">Annuler</button> 
+                    <button onclick="joinAppointment('${a.id}','${a.doctorId}')" class="btn-success">Rejoindre</button>
+                </div>
             </div>
-        `).join('');
-        if (doctors.length) renderCalendar();
+        `).join('') : '<p>Aucun rendez-vous pris.</p>';
+        
+        if (doctors.length && selectedDoctorId) renderCalendar();
+        loadHistory();
     }
 
     async function renderCalendar() {
@@ -338,12 +456,13 @@
         const today = new Date();
         let year = today.getFullYear(), month = today.getMonth();
         let selectedDateStr = today.toISOString().slice(0,10);
-        const monthNames = ["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Aoû","Sep","Oct","Nov","Déc"];
+        const monthNames = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+        
         const build = async (y, m) => {
             const first = new Date(y, m, 1);
             const days = new Date(y, m+1, 0).getDate();
             const start = first.getDay();
-            let html = `<div style="display:flex; justify-content:space-between"><button id="prevMonth">◀</button><h3>${monthNames[m]} ${y}</h3><button id="nextMonth">▶</button></div><div class="calendar-grid">`;
+            let html = `<div style="display:flex; justify-content:space-between; align-items:center;"><button id="prevMonth">◀</button><h4>${monthNames[m]} ${y}</h4><button id="nextMonth">▶</button></div><div class="calendar-grid">`;
             ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'].forEach(d => html += `<div style="font-weight:bold">${d}</div>`);
             for (let i=0; i<start; i++) html += `<div></div>`;
             for (let d=1; d<=days; d++) {
@@ -352,11 +471,12 @@
             }
             html += `</div>`;
             document.getElementById('calendarView').innerHTML = html;
+            
             document.querySelectorAll('.calendar-day').forEach(day => {
                 day.onclick = () => { selectedDateStr = day.dataset.date; build(y, m); loadSlots(selectedDateStr); };
             });
-            document.getElementById('prevMonth').onclick = () => build(y-1, m<0?11:m-1);
-            document.getElementById('nextMonth').onclick = () => build(y+1, m>11?0:m+1);
+            document.getElementById('prevMonth').onclick = () => build(y, m - 1);
+            document.getElementById('nextMonth').onclick = () => build(y, m + 1);
             await loadSlots(selectedDateStr);
         };
         await build(year, month);
@@ -367,8 +487,8 @@
         const slots = await res.json();
         const div = document.getElementById('slotsView');
         if (!div) return;
-        if (!slots.length) { div.innerHTML = '<p>Aucun créneau ce jour</p>'; return; }
-        div.innerHTML = `<h4>Créneaux ${new Date(dateStr).toLocaleDateString()}</h4>` + slots.map(s => `<div class="slot"><span>🕒 ${s.startTimeFormatted}</span><button onclick="bookSlot('${s.start}','${s.end}')">Réserver</button></div>`).join('');
+        if (!slots.length) { div.innerHTML = '<p>Aucun créneau disponible pour cette date.</p>'; return; }
+        div.innerHTML = `<h4>Créneaux du ${new Date(dateStr).toLocaleDateString()}</h4>` + slots.map(s => `<div class="slot"><span>🕒 ${s.startTimeFormatted}</span><button onclick="bookSlot('${s.start}','${s.end}')">Réserver</button></div>`).join('');
     }
 
     window.bookSlot = async (start, end) => {
@@ -377,17 +497,29 @@
             body: JSON.stringify({ patientId: currentUser.id, patientName: currentUser.name, doctorId: selectedDoctorId, doctorName: selectedDoctorName, start, end })
         });
         const data = await res.json();
-        if (data.success) alert("Rendez-vous pris !");
-        else alert(data.message);
+        if (data.success) alert("Rendez-vous confirmé !");
         loadPatientDashboard();
     };
+    
     window.cancelAppointment = async (id) => {
         await fetch(`/api/appointments/${id}`, { method: 'DELETE' });
         loadPatientDashboard();
     };
+    
     window.joinAppointment = (appId, docId) => {
         socket.emit('call:request', { appointmentId: appId, patientId: currentUser.id, patientName: currentUser.name, doctorId: docId, doctorName: selectedDoctorName });
     };
+
+    // AJOUT : Récupération AJAX et injection de l'historique dans l'interface
+    async function loadHistory() {
+        const res = await fetch('/api/history');
+        const history = await res.json();
+        const div = document.getElementById('historyList');
+        if(div) {
+            if(!history.length) div.innerHTML = "<p>Aucun enregistrement trouvé dans l'historique.</p>";
+            else div.innerHTML = history.map(h => `<div style="padding:6px 0;">Patient: <strong>${h.patientName}</strong>, date: ${h.date} — Rythme cardiaque moyen : <strong>${h.avgBpm} BPM</strong></div>`).join('<hr>');
+        }
+    }
 </script>
 </body>
 </html>
