@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DoctoLine – Téléconsultation Sécurisée + 2FA Admin</title>
+<title>DoctoLine – Téléconsultation Sécurisée</title>
 <script src="/socket.io/socket.io.js"></script>
 <style>
-  /* ===== VARIABLES & RESET (inchangé mais optimisé) ===== */
+  /* ===== VARIABLES & RESET ===== */
   :root {
     --primary: #0a5c7f;
     --primary-light: #1a8ab5;
@@ -28,6 +28,7 @@
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
 
+  /* ===== LAYOUT ===== */
   #app { display: flex; flex-direction: column; min-height: 100vh; }
   .header {
     background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 60%, var(--primary-light) 100%);
@@ -99,7 +100,7 @@
   .view { display: none; }
   .view.active { display: block; }
 
-  /* ===== LOGIN / REGISTER / 2FA MODAL ===== */
+  /* ===== LOGIN / REGISTER ===== */
   #auth-view { display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 64px); padding: 20px; }
   .auth-container { width: 100%; max-width: 440px; }
   .auth-hero {
@@ -111,19 +112,7 @@
   .auth-tab { flex: 1; padding: 11px; text-align: center; border: none; background: var(--bg); color: var(--text-muted); font-weight: 600; cursor: pointer; }
   .auth-tab.active { background: var(--primary); color: white; }
 
-  /* Modal 2FA */
-  .modal {
-    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;
-  }
-  .modal.active { display: flex; }
-  .modal-content {
-    background: white; border-radius: 24px; max-width: 450px; width: 90%; padding: 28px;
-    box-shadow: 0 20px 35px rgba(0,0,0,0.3);
-  }
-  .modal-content h3 { color: var(--primary-dark); margin-bottom: 20px; display: flex; gap: 10px; align-items: center; }
-
-  /* DOCTOR CARD / APPOINTMENTS */
+  /* ===== DOCTOR CARD / APPOINTMENTS ===== */
   .doctor-card, .appt-item {
     display: flex; align-items: center; justify-content: space-between;
     padding: 16px; border: 1.5px solid var(--border);
@@ -136,7 +125,7 @@
   .slot-btn { padding: 10px 8px; border-radius: 8px; border: 1.5px solid var(--primary-light); background: white; text-align: center; cursor: pointer; font-weight: 600; }
   .slot-btn.selected { background: var(--primary); color: white; }
 
-  /* CYBER & LOGS TABLE */
+  /* ===== CYBER & LOGS TABLE ===== */
   .cyber-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
   .log-table-wrapper { width: 100%; overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid var(--border); }
   .log-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
@@ -148,7 +137,7 @@
   .badge-status.failed { background: #f8d7da; color: #721c24; }
   .user-list-item { padding: 10px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
 
-  /* CALL UI & SENSORS */
+  /* ===== CALL UI & SENSORS ===== */
   #call-view { position: fixed; inset: 0; background: #0a1520; z-index: 1000; display: none; flex-direction: column; }
   #call-view.active { display: flex; }
   .call-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: rgba(255,255,255,0.05); color: white; }
@@ -188,7 +177,7 @@
 
   <div id="auth-view">
     <div class="auth-container">
-      <div class="auth-hero"><h1>🩺 DoctoLine</h1><p>Téléconsultation </p></div>
+      <div class="auth-hero"><h1>🩺 DoctoLine</h1><p>Téléconsultation & Cybersécurité (Audit Trail)</p></div>
       <div class="auth-tabs">
         <button class="auth-tab active" id="btn-tab-login" onclick="switchAuthTab('login')">Connexion</button>
         <button class="auth-tab" id="btn-tab-reg" onclick="switchAuthTab('register')">Inscription</button>
@@ -201,7 +190,6 @@
         <p class="text-muted" style="text-align:center;margin-top:14px; font-size: 0.8rem;">
           Démos: <b>patient@test.fr</b> | <b>medecin@test.fr</b> (pass123)<br>
           Cyber Admin: <span style="color:var(--danger)"><b>admin@cyber.fr</b> / <b>admincyberpass</b></span>
-          <br><span style="font-size:0.75rem;">+ 2FA (3 questions)</span>
         </p>
       </div>
       <div class="card" id="register-form" style="display:none">
@@ -233,31 +221,105 @@
   </div>
 
   <div class="main" id="main-view" style="display:none">
-    <!-- Patient, Doctor, Admin dashboards (inchangé) -->
-    <div id="patient-dashboard" style="display:none">...</div>
-    <div id="doctor-dashboard" style="display:none">...</div>
-    <div id="admin-dashboard" style="display:none">...</div>
+
+    <div id="patient-dashboard" style="display:none">
+      <div class="card">
+        <div class="card-title">👤 Espace Patient – <span id="patient-greeting"></span></div>
+        <div class="tabs">
+          <button class="tab active" onclick="showPatientTab('doctors')">🏥 Médecins</button>
+          <button class="tab" onclick="showPatientTab('appointments')">📅 Mes RDV</button>
+        </div>
+        <div id="tab-doctors" class="view active"><div id="doctors-list"></div>
+          <div id="slot-picker" style="display:none;margin-top:20px;"><hr><br>
+            <div class="card-title">Prendre RDV avec <strong id="selected-doctor-name"></strong></div>
+            <input type="date" id="slot-date" onchange="loadSlots()"><div id="slots-container"></div>
+          </div>
+        </div>
+        <div id="tab-appointments" class="view"><div id="patient-appointments"></div></div>
+      </div>
+    </div>
+
+    <div id="doctor-dashboard" style="display:none">
+      <div class="card">
+        <div class="card-title">🩺 Espace Médecin – Dr. <span id="doctor-greeting"></span></div>
+        <div id="doctor-appointments"></div>
+      </div>
+    </div>
+
+    <div id="admin-dashboard" style="display:none">
+      <div class="card" style="background: #fafbfc; border-left: 5px solid var(--danger);">
+        <div class="card-title" style="color: var(--danger);">🛡️ Centre de Supervision Sécurité & Traçabilité (SIEM Audit Logs)</div>
+        <p class="text-muted" style="margin-bottom: 20px;">Vue globale en temps réel sur l'infrastructure DoctoLine, la conformité des flux et la détection d'intrusions.</p>
+        
+        <div class="cyber-grid">
+          <div>
+            <div class="card" style="padding:15px;">
+              <h3 style="font-size:1rem; margin-bottom:10px; color: var(--primary-dark)">👥 Comptes Utilisateurs</h3>
+              <div id="admin-users-list" style="max-height: 400px; overflow-y:auto;"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card" style="padding:15px;">
+              <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:10px;">
+                <h3 style="font-size:1rem; color: var(--primary-dark)">📋 Journal de Traçabilité des Activités (Logs d'Audit)</h3>
+                <button class="btn btn-outline btn-sm" onclick="fetchAdminLogs()">🔄 Rafraîchir</button>
+              </div>
+              <div class="log-table-wrapper">
+                <table class="log-table">
+                  <thead>
+                    <tr>
+                      <th>Horodatage</th>
+                      <th>Utilisateur / Email</th>
+                      <th>Rôle</th>
+                      <th>Action Cyber</th>
+                      <th>Adresse IP</th>
+                      <th>Statut</th>
+                      <th>Détails de l'évènement</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-logs-tbody">
+                    </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- MODALE 2FA -->
-  <div id="twofa-modal" class="modal">
-    <div class="modal-content">
-      <h3>🔐 Double authentification (2FA)</h3>
-      <p>Veuillez répondre aux trois questions de sécurité :</p>
-      <div id="twofa-questions-container"></div>
-      <div id="twofa-error" class="alert alert-error" style="display:none;"></div>
-      <button class="btn btn-primary btn-full" onclick="submit2FA()">Vérifier et continuer</button>
+  <div id="call-view">
+    <div class="call-header"><div class="call-title" id="call-title">Téléconsultation</div><div id="call-timer">00:00</div></div>
+    <div class="sensor-panel">
+      <div class="sensor-grid">
+        <div class="sensor-item"><div>❤️ Fréquence Cardiaque</div><div class="sensor-value hr" id="s-hr">--</div><span>bpm</span></div>
+        <div class="sensor-item"><div>🌡️ Température</div><div class="sensor-value temp" id="s-temp">--</div><span>°C</span></div>
+        <div class="sensor-item"><div>💨 SpO2</div><div class="sensor-value spo2" id="s-spo2">--</div><span>%</span></div>
+      </div>
+    </div>
+    <div style="padding: 10px 20px;"><button class="btn btn-accent btn-sm" onclick="generateFHIR()">📄 Générer & Sauvegarder Ressource FHIR</button></div>
+    <div class="videos-container">
+      <video id="remote-video" autoplay playsinline></video>
+      <video id="local-video" autoplay muted playsinline></video>
+    </div>
+    <div class="call-controls"><button class="ctrl-btn danger" onclick="endCall()">Ending 📵</button></div>
+  </div>
+
+  <div id="incoming-call-overlay">
+    <div class="incoming-call-box">
+      <h3>Appel Entrant 📹</h3><br>
+      <p id="incoming-caller-name"></p><br>
+      <button class="btn btn-accent" onclick="acceptCall()">Accepter</button>
+      <button class="btn btn-danger" onclick="rejectCall()">Refuser</button>
     </div>
   </div>
-
-  <div id="call-view">...</div>
-  <div id="incoming-call-overlay">...</div>
 
 </div>
 
 <script>
-// === STATE & GLOBAL VARIABLES ===
-const STATE = { user: null, socket: null, peerConnection: null, localStream: null, currentCallId: null, peerSocketId: null, sensorInterval: null, callTimerInterval: null, callStartTime: null, selectedDoctorId: null, selectedDoctorName: null, lastFhirData: null, pending2FATempId: null };
+const STATE = { user: null, socket: null, peerConnection: null, localStream: null, currentCallId: null, peerSocketId: null, sensorInterval: null, callTimerInterval: null, callStartTime: null, selectedDoctorId: null, selectedDoctorName: null, lastFhirData: null };
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 window.addEventListener('load', () => {
@@ -283,62 +345,16 @@ function toggleDoctorFields() {
   document.getElementById('doctor-fields').style.display = document.getElementById('reg-role').value === 'medecin' ? 'block' : 'none';
 }
 
-// === LOGIN (avec gestion 2FA) ===
-let pending2FATempId = null;
 async function loginUser() {
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
   try {
     const res = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, password}) });
     const data = await res.json();
-    if (!data.success) {
-      document.getElementById('login-error').innerHTML = `<div class="alert alert-error">${data.message}</div>`;
-      return;
-    }
-    if (data.requiresTwoFactor) {
-      // Afficher la modale 2FA
-      pending2FATempId = data.tempId;
-      const container = document.getElementById('twofa-questions-container');
-      container.innerHTML = '';
-      data.questions.forEach((q, idx) => {
-        const div = document.createElement('div');
-        div.className = 'form-group';
-        div.innerHTML = `<label>${q}</label><input type="text" id="twofa-answer-${idx}" placeholder="Votre réponse" autocomplete="off">`;
-        container.appendChild(div);
-      });
-      document.getElementById('twofa-modal').classList.add('active');
-      document.getElementById('twofa-error').style.display = 'none';
-      return;
-    }
-    // Pas de 2FA (patient/médecin)
+    if (!data.success) { document.getElementById('login-error').innerHTML = `<div class="alert alert-error">${data.message}</div>`; return; }
     STATE.user = data.user;
     initApp();
-  } catch(e) { console.error(e); }
-}
-
-async function submit2FA() {
-  const answers = [];
-  for (let i = 0; i < 3; i++) {
-    const val = document.getElementById(`twofa-answer-${i}`).value.trim();
-    answers.push(val);
-  }
-  try {
-    const res = await fetch('/api/verify-2fa', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tempId: pending2FATempId, answers })
-    });
-    const data = await res.json();
-    if (!data.success) {
-      document.getElementById('twofa-error').style.display = 'block';
-      document.getElementById('twofa-error').innerText = data.message;
-      return;
-    }
-    // Succès 2FA
-    document.getElementById('twofa-modal').classList.remove('active');
-    STATE.user = data.user;
-    initApp();
-  } catch(e) { console.error(e); }
+  } catch(e) { }
 }
 
 async function registerUser() {
@@ -365,9 +381,11 @@ function initApp() {
   document.getElementById('main-view').style.display = 'block';
   document.getElementById('header-user').style.display = 'flex';
   document.getElementById('header-name').textContent = STATE.user.name;
+  
   const roleEl = document.getElementById('header-role');
   roleEl.className = "badge-role " + STATE.user.role;
   roleEl.textContent = STATE.user.role.toUpperCase();
+
   initSocket();
 
   if (STATE.user.role === 'patient') {
@@ -379,42 +397,163 @@ function initApp() {
     document.getElementById('doctor-greeting').textContent = STATE.user.name;
     loadDoctorAppointments();
   } else if (STATE.user.role === 'admin') {
+    // Activation Dashboard Admin Cyber
     document.getElementById('admin-dashboard').style.display = 'block';
     fetchAdminUsers();
     fetchAdminLogs();
   }
 }
 
-// === Le reste des fonctions (socket, WebRTC, logs, etc.) est identique à l’original ===
-// ... (copiez les fonctions inchangées loadDoctors, loadPatientAppointments, startConsultation, etc.)
-// Pour éviter la répétition, je joins ci-dessous les fonctions manquantes mais vous pouvez reprendre votre ancien script en ajoutant juste la gestion 2FA.
+function initSocket() {
+  STATE.socket = io({ transports: ['websocket','polling'] });
+  STATE.socket.on('connect', () => {
+    STATE.socket.emit('register', { userId: STATE.user.id, userName: STATE.user.name, role: STATE.user.role });
+  });
+  STATE.socket.on('force-logout', (d) => { alert(d.message); logout(); });
+  STATE.socket.on('call:incoming', (d) => { STATE.pendingCallData = d; document.getElementById('incoming-caller-name').textContent = d.doctorName ? `Dr. ${d.doctorName}` : d.patientName; document.getElementById('incoming-call-overlay').classList.add('active'); });
+  STATE.socket.on('call:requested', (d) => { STATE.currentCallId = d.callId; });
+  STATE.socket.on('call:accepted', async (d) => { STATE.currentCallId = d.callId; STATE.peerSocketId = d.peerSocketId; showCallView(); await startCall(true); });
+  STATE.socket.on('webrtc:ready', (d) => { STATE.currentCallId = d.callId; STATE.peerSocketId = d.peerSocketId; });
+  STATE.socket.on('call:ended', () => { closeCallView(); });
+  
+  // Évènement de streaming Cyber-Log en temps réel (uniquement pour l'admin)
+  STATE.socket.on('admin:new-log', (log) => {
+    if(STATE.user && STATE.user.role === 'admin') {
+        prependLogRow(log);
+    }
+  });
 
-// === (Note : toutes les fonctions originales doivent être présentes ici, mais pour la lisibilité, je ne duplique pas l'intégralité. Veuillez conserver l'ancien script et y ajouter les parties 2FA) ===
-// Pour simplifier, je fournis le bloc complet dans la réponse finale.
+  STATE.socket.on('webrtc:offer', async (d) => {
+    STATE.peerSocketId = d.fromSocketId;
+    if (!STATE.peerConnection) await startCall(false);
+    await STATE.peerConnection.setRemoteDescription(new RTCSessionDescription(d.offer));
+    const ans = await STATE.peerConnection.createAnswer();
+    await STATE.peerConnection.setLocalDescription(ans);
+    STATE.socket.emit('webrtc:answer', { targetSocketId: d.fromSocketId, answer: ans });
+  });
+  STATE.socket.on('webrtc:answer', async (d) => { await STATE.peerConnection.setRemoteDescription(new RTCSessionDescription(d.answer)); });
+  STATE.socket.on('webrtc:ice-candidate', async (d) => { try{await STATE.peerConnection.addIceCandidate(new RTCIceCandidate(d.candidate));}catch(e){} });
+  STATE.socket.on('sensor:update', (d) => { if(d.heartRate) document.getElementById('s-hr').textContent = d.heartRate; if(d.temperature) document.getElementById('s-temp').textContent = d.temperature; if(d.spo2) document.getElementById('s-spo2').textContent = d.spo2; });
+}
 
-// Intégration des fonctions manquantes (doivent être identiques à votre version précédente)
-async function loadDoctors() { ... } // inchangé
-async function loadPatientAppointments() { ... }
-function startConsultation(apptId, docId, docName) { ... }
-async function loadDoctorAppointments() { ... }
-function startConsultationDoc(apptId, patId, patName) { ... }
-function acceptCall() { ... }
-function rejectCall() { ... }
-async function startCall(isInitiator) { ... }
-function startCallTimer() { ... }
-function startSensorSimulation() { ... }
-async function generateFHIR() { ... }
-function endCall() { ... }
-function showCallView() { ... }
-function closeCallView() { ... }
-function showPatientTab(name) { ... }
-async function fetchAdminUsers() { ... }
-async function fetchAdminLogs() { ... }
-function appendLogRow(log) { ... }
-function prependLogRow(log) { ... }
-function createLogRowElement(log) { ... }
+// --- FONCTIONS ADMIN CYBER (NEW) ---
+async function fetchAdminUsers() {
+    const res = await fetch('/api/admin/users');
+    const users = await res.json();
+    const container = document.getElementById('admin-users-list');
+    container.innerHTML = users.map(u => `
+        <div class="user-list-item">
+            <div>
+                <strong>${u.name}</strong><br>
+                <small style="color:var(--text-muted);">${u.email}</small>
+            </div>
+            <span class="badge-role ${u.role}" style="border:1px solid; border-radius:10px; padding:2px 8px; font-size:0.75rem;">${u.role.toUpperCase()}</span>
+        </div>
+    `).join('');
+}
 
-// (Assurez-vous que ces fonctions sont bien présentes, sinon l'application ne fonctionnera pas)
+async function fetchAdminLogs() {
+    const res = await fetch('/api/admin/logs');
+    const logs = await res.json();
+    const tbody = document.getElementById('admin-logs-tbody');
+    tbody.innerHTML = '';
+    logs.forEach(log => appendLogRow(log));
+}
+
+function appendLogRow(log) {
+    const tbody = document.getElementById('admin-logs-tbody');
+    const tr = createLogRowElement(log);
+    tbody.appendChild(tr);
+}
+
+function prependLogRow(log) {
+    const tbody = document.getElementById('admin-logs-tbody');
+    const tr = createLogRowElement(log);
+    tbody.insertBefore(tr, tbody.firstChild);
+}
+
+function createLogRowElement(log) {
+    const tr = document.createElement('tr');
+    const time = new Date(log.timestamp).toLocaleTimeString();
+    tr.innerHTML = `
+        <td><b>${time}</b></td>
+        <td>${log.username}<br><small style="color:var(--text-muted)">ID: ${log.userId}</small></td>
+        <td><span class="badge-role ${log.role}" style="font-size:0.7rem; padding:1px 5px;">${log.role}</span></td>
+        <td><code style="background:#f1f5f9; padding:2px 4px; border-radius:4px; font-weight:bold; color:var(--primary-dark);">${log.action}</code></td>
+        <td><small style="font-family:monospace;">${log.ip}</small></td>
+        <td><span class="badge-status ${log.status.toLowerCase()}">${log.status}</span></td>
+        <td style="color:#334155;">${log.details}</td>
+    `;
+    return tr;
+}
+
+// --- LOGIQUE PATIENT / MEDECIN ---
+async function loadDoctors() {
+  const res = await fetch('/api/doctors'); const docs = await res.json();
+  document.getElementById('doctors-list').innerHTML = docs.map(d => `<div class="doctor-card"><div><b>Dr. ${d.name}</b> (${d.specialty})</div><button class="btn btn-primary btn-sm" onclick="selectDoctor('${d.id}','${d.name}')">Choisir</button></div>`).join('');
+}
+function selectDoctor(id, name) { STATE.selectedDoctorId = id; STATE.selectedDoctorName = name; document.getElementById('selected-doctor-name').textContent = name; document.getElementById('slot-picker').style.display='block'; loadSlots(); }
+async function loadSlots() {
+  const date = document.getElementById('slot-date').value; if(!date) return;
+  const res = await fetch(`/api/doctors/${STATE.selectedDoctorId}/slots?date=${date}`); const slots = await res.json();
+  document.getElementById('slots-container').innerHTML = `<div class="slots-grid">` + slots.map(s => `<button class="slot-btn" onclick="bookSlot('${s.start}','${s.end}')">${s.startTimeFormatted}</button>`).join('') + `</div>`;
+}
+async function bookSlot(start, end) {
+  await fetch('/api/appointments', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ patientId: STATE.user.id, patientName: STATE.user.name, doctorId: STATE.selectedDoctorId, doctorName: STATE.selectedDoctorName, start, end }) });
+  document.getElementById('slot-picker').style.display='none'; loadPatientAppointments();
+}
+async function loadPatientAppointments() {
+  const res = await fetch(`/api/patients/${STATE.user.id}/appointments`); const appts = await res.json();
+  document.getElementById('patient-appointments').innerHTML = appts.map(a => `<div class="appt-item"><div><b>Dr. ${a.doctorName}</b><br>${new Date(a.start).toLocaleString()}</div><button class="btn btn-accent btn-sm" onclick="startConsultation('${a.id}','${a.doctorId}','${a.doctorName}')">Démarrer</button></div>`).join('');
+}
+function startConsultation(apptId, docId, docName) { STATE.socket.emit('call:request', { appointmentId: apptId, patientId: STATE.user.id, patientName: STATE.user.name, doctorId: docId, doctorName: docName }); showCallView(); }
+async function loadDoctorAppointments() {
+  const res = await fetch(`/api/doctors/${STATE.user.doctorId}/appointments`); const appts = await res.json();
+  document.getElementById('doctor-appointments').innerHTML = appts.map(a => `<div class="appt-item"><div><b>${a.patientName}</b><br>${new Date(a.start).toLocaleString()}</div><button class="btn btn-accent btn-sm" onclick="startConsultationDoc('${a.id}','${a.patientId}','${a.patientName}')">Appeler</button></div>`).join('');
+}
+function startConsultationDoc(apptId, patId, patName) { STATE.socket.emit('call:request', { appointmentId: apptId, patientId: patId, patientName: patName, doctorId: STATE.user.doctorId, doctorName: STATE.user.name }); showCallView(); }
+
+function acceptCall() { const d = STATE.pendingCallData; document.getElementById('incoming-call-overlay').classList.remove('active'); STATE.socket.emit('call:accept', { callId: d.callId, doctorId: d.doctorId, doctorName: d.doctorName, patientSocketId: d.fromSocketId }); showCallView(); STATE.pendingCallData = null; }
+function rejectCall() { const d = STATE.pendingCallData; if (d) STATE.socket.emit('call:reject', { callId: d.callId }); document.getElementById('incoming-call-overlay').classList.remove('active'); STATE.pendingCallData = null; }
+
+// --- WEBRTC CORE ---
+async function startCall(isInitiator) {
+  try { STATE.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); document.getElementById('local-video').srcObject = STATE.localStream; } catch(e){}
+  STATE.peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  if (STATE.localStream) STATE.localStream.getTracks().forEach(t => STATE.peerConnection.addTrack(t, STATE.localStream));
+  STATE.peerConnection.ontrack = (e) => { document.getElementById('remote-video').srcObject = e.streams[0]; };
+  STATE.peerConnection.onicecandidate = (e) => { if (e.candidate) STATE.socket.emit('webrtc:ice-candidate', { targetSocketId: STATE.peerSocketId, candidate: e.candidate }); };
+  
+  STATE.peerConnection.oniceconnectionstatechange = () => {
+    if(STATE.peerConnection.iceConnectionState === 'connected') { startCallTimer(); startSensorSimulation(); }
+  };
+  if (isInitiator) {
+    const offer = await STATE.peerConnection.createOffer(); await STATE.peerConnection.setLocalDescription(offer);
+    STATE.socket.emit('webrtc:offer', { targetSocketId: STATE.peerSocketId, offer });
+  }
+}
+
+function startCallTimer() { STATE.callStartTime = Date.now(); STATE.callTimerInterval = setInterval(() => { const el = Math.floor((Date.now() - STATE.callStartTime)/1000); document.getElementById('call-timer').textContent = String(Math.floor(el/60)).padStart(2,'0') + ":" + String(el%60).padStart(2,'0'); }, 1000); }
+function startSensorSimulation() {
+  let h = 75, t = 36.6, s = 98;
+  STATE.sensorInterval = setInterval(() => {
+    h = Math.round(h + (Math.random()-0.5)*3); t = Math.round((t + (Math.random()-0.5)*0.1)*10)/10; s = Math.round(s + (Math.random()-0.5)*1);
+    const data = { callId: STATE.currentCallId, heartRate: h, temperature: t, spo2: s };
+    STATE.lastFhirData = data;
+    if(STATE.socket) STATE.socket.emit('sensor:data', data);
+    document.getElementById('s-hr').textContent = h; document.getElementById('s-temp').textContent = t; document.getElementById('s-spo2').textContent = s;
+  }, 2000);
+}
+
+async function generateFHIR() {
+  if(!STATE.lastFhirData) return;
+  await fetch('/api/fhir/observation', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ patientId: STATE.user.id, patientName: STATE.user.name, ...STATE.lastFhirData }) });
+  alert('Ressource d\'observation FHIR transmise de manière sécurisée.');
+}
+function endCall() { if(STATE.currentCallId) STATE.socket.emit('call:end', { callId: STATE.currentCallId }); closeCallView(); }
+function showCallView() { document.getElementById('call-view').classList.add('active'); }
+function closeCallView() { document.getElementById('call-view').classList.remove('active'); clearInterval(STATE.sensorInterval); clearInterval(STATE.callTimerInterval); if(STATE.peerConnection) STATE.peerConnection.close(); if(STATE.localStream) STATE.localStream.getTracks().forEach(t=>t.stop()); }
+function showPatientTab(name) { document.getElementById('tab-doctors').classList.toggle('active', name==='doctors'); document.getElementById('tab-appointments').classList.toggle('active', name==='appointments'); if(name==='appointments') loadPatientAppointments(); }
 </script>
 </body>
 </html>
