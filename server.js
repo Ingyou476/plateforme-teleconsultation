@@ -31,7 +31,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const users = [];
 const doctors = [];
 const appointments = [];
-const consultationHistory = []; // AJOUT : Stockage de l'historique requis par le sujet
+const consultationHistory = [];
 
 // ---------- API ----------
 app.post('/api/register', (req, res) => {
@@ -116,7 +116,6 @@ app.delete('/api/appointments/:appointmentId', (req, res) => {
     res.json({ success: true });
 });
 
-// AJOUT : Points de terminaison pour l'historique des consultations
 app.post('/api/history', (req, res) => {
     consultationHistory.push(req.body);
     res.json({ success: true });
@@ -126,7 +125,7 @@ app.get('/api/history', (req, res) => {
     res.json(consultationHistory);
 });
 
-// ---------- WebSocket (signalisation & messagerie) ----------
+// ---------- WebSocket (Signalisation & Messagerie) ----------
 const activeCalls = new Map();
 
 io.on('connection', (socket) => {
@@ -139,15 +138,14 @@ io.on('connection', (socket) => {
 
     socket.on('call:request', (data) => {
         const { appointmentId, patientId, patientName, doctorId, doctorName } = data;
-        const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-        activeCalls.set(callId, { callId, appointmentId, patientId, patientName, doctorId, doctorName,
-            patientSocketId: socket.id, status: 'waiting' });
+        const callId = `call_${Date.now()}`;
+        activeCalls.set(callId, { callId, appointmentId, patientId, patientName, doctorId, doctorName, patientSocketId: socket.id, status: 'waiting' });
         io.to(`user-${doctorId}`).emit('call:incoming', { callId, patientId, patientName, doctorId, doctorName, fromSocketId: socket.id });
         socket.emit('call:requested', { callId });
     });
 
     socket.on('call:accept', (data) => {
-        const { callId, doctorId, doctorName, patientSocketId } = data;
+        const { callId, doctorId, doctorName } = data;
         const call = activeCalls.get(callId);
         if (call && call.status === 'waiting') {
             call.status = 'accepted';
@@ -167,7 +165,6 @@ io.on('connection', (socket) => {
         io.to(data.targetSocketId).emit('webrtc:ice-candidate', { candidate: data.candidate, fromSocketId: socket.id });
     });
 
-    // AJOUT : Relais pour la messagerie textuelle instantanée (Chat)
     socket.on('chat:message', (data) => {
         io.to(data.targetSocketId).emit('chat:message', { msg: data.msg });
     });
@@ -194,5 +191,4 @@ function getLocalIp() {
 
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🔒 Serveur HTTPS démarré sur https://${getLocalIp()}:${PORT}`);
-    console.log(`📅 Prise de rendez-vous, WebRTC, Historique, Chat et FHIR opérationnels.\n`);
 });

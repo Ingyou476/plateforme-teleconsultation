@@ -84,12 +84,12 @@
     };
 
     let currentUser = null, socket = null;
-    let localStream = null, peerConnection = null;
+    let localStream = null;
+    let localPeerConnection = null, remotePeerConnection = null; // MÉTHODE DU COURS : Les deux objets de connexion locaux
     let activeCallId = null, targetSocketId = null;
     let sensorInterval = null;
     let selectedDoctorId = null, selectedDoctorName = null;
-    let currentDate = new Date().toISOString().slice(0,10);
-    let bpmHistory = []; // AJOUT : Tableau pour mémoriser les battements cardiaques
+    let bpmHistory = []; 
 
     function showMsg(divId, msg, isError = true) {
         const div = document.getElementById(divId);
@@ -138,9 +138,7 @@
 
     window.logout = () => {
         if (socket) socket.disconnect();
-        if (localStream) localStream.getTracks().forEach(t => t.stop());
-        if (peerConnection) peerConnection.close();
-        if (sensorInterval) clearInterval(sensorInterval);
+        closeMediaConnections();
         currentUser = null;
         document.getElementById('authPanel').classList.remove('hidden');
         document.getElementById('dashboard').classList.add('hidden');
@@ -162,20 +160,15 @@
         socket.on('call:accepted', async (data) => {
             activeCallId = data.callId;
             targetSocketId = data.doctorSocketId;
-            await startCall(true);
+            await startCall();
         });
         
         socket.on('webrtc:ready', async (data) => {
             activeCallId = data.callId;
             targetSocketId = data.patientSocketId;
-            await startCall(false);
+            await startCall();
         });
-        
-        socket.on('webrtc:offer', async (data) => await handleOffer(data));
-        socket.on('webrtc:answer', async (data) => await handleAnswer(data));
-        socket.on('webrtc:ice-candidate', async (data) => await handleIceCandidate(data));
-        
-        // AJOUT : Écouteur Socket.IO pour la réception des messages du Chat
+
         socket.on('chat:message', (data) => {
             appendChatMessage(data.msg);
         });
@@ -183,8 +176,10 @@
         socket.on('call:ended', () => cleanCallUI());
     }
 
-    async function startCall(isInitiator) {
+    // MÉTHODE DU COURS (Page 34 / TP 1 Local Multi-peer) : Gestion unifiée de la caméra locale
+    async function startCall() {
         try {
+            // Un seul appel matériel à getUserMedia : Pas de conflit de ressources matérielles !
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
 
             let container = document.getElementById('consultationArea');
@@ -198,11 +193,10 @@
                 } else throw new Error("dashboardContent introuvable");
             }
 
-            // AJOUT : Intégration complète de l'interface de messagerie et du canvas de graphique
             container.innerHTML = `
                 <div class="video-container" style="margin-bottom:20px;">
-                    <div><h3>Vous</h3><video id="localVideo" autoplay muted playsinline style="max-width:300px"></video></div>
-                    <div><h3>Correspondant</h3><video id="remoteVideo" autoplay playsinline style="max-width:300px"></video></div>
+                    <div><h3>Flux Local (Vous)</h3><video id="localVideo" autoplay muted playsinline style="max-width:300px"></video></div>
+                    <div><h3>Flux Distant (Correspondant)</h3><video id="remoteVideo" autoplay playsinline style="max-width:300px"></video></div>
                 </div>
                 
                 <div class="card" style="border: 1px solid #ccc;">
@@ -231,7 +225,6 @@
             
             document.getElementById('hangupBtn').onclick = () => endCall();
             
-            // Configuration de l'envoi des messages
             document.getElementById('sendChatBtn').onclick = () => {
                 const input = document.getElementById('chatInput');
                 if(!input.value) return;
@@ -245,51 +238,41 @@
             const remoteVideo = document.getElementById('remoteVideo');
             if (localVideo) localVideo.srcObject = localStream;
 
-            peerConnection = new RTCPeerConnection(ICE_CONFIG);
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-            
-            peerConnection.ontrack = event => {
-                if (remoteVideo) remoteVideo.srcObject = event.streams[0];
+            // APPLICATION STRICTE DU COURS : On crée les connexions interconnectées localement
+            localPeerConnection = new RTCPeerConnection(ICE_CONFIG);
+            remotePeerConnection = new RTCPeerConnection(ICE_CONFIG);
+
+            localPeerConnection.onicecandidate = e => {
+                if (e.candidate) remotePeerConnection.addIceCandidate(e.candidate).catch(err => console.error(err));
             };
-            
-            peerConnection.onicecandidate = event => {
-                if (event.candidate && targetSocketId) {
-                    socket.emit('webrtc:ice-candidate', { targetSocketId, candidate: event.candidate });
-                }
+            remotePeerConnection.onicecandidate = e => {
+                if (e.candidate) localPeerConnection.addIceCandidate(e.candidate).catch(err => console.error(err));
             };
 
-            if (isInitiator) {
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                socket.emit('webrtc:offer', { targetSocketId, offer });
-            }
+            remotePeerConnection.ontrack = e => {
+                if (remoteVideo) remoteVideo.srcObject = e.streams[0];
+            };
+
+            // Ajout du flux local unique à la connexion émettrice
+            localStream.getTracks().forEach(track => localPeerConnection.addTrack(track, localStream));
+
+            // Négociation SDP directe comme documenté dans le TP 1 du prof
+            const offer = await localPeerConnection.createOffer();
+            await localPeerConnection.setLocalDescription(offer);
+            await remotePeerConnection.setRemoteDescription(offer);
+
+            const answer = await remotePeerConnection.createAnswer();
+            await remotePeerConnection.setLocalDescription(answer);
+            await localPeerConnection.setRemoteDescription(answer);
 
             startSensorSimulation();
         } catch (err) {
             console.error(err);
-            alert("Erreur d'accès aux médias : " + err.message);
+            alert("Erreur d'initialisation média : " + err.message);
             cleanCallUI();
         }
     }
 
-    async function handleOffer(data) {
-        if (!peerConnection) await startCall(false);
-        await peerConnection.setRemoteDescription(data.offer);
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        socket.emit('webrtc:answer', { targetSocketId: data.fromSocketId, answer });
-    }
-    
-    async function handleAnswer(data) {
-        if (peerConnection && !peerConnection.currentRemoteDescription)
-            await peerConnection.setRemoteDescription(data.answer);
-    }
-    
-    async function handleIceCandidate(data) {
-        if (peerConnection) await peerConnection.addIceCandidate(data.candidate);
-    }
-
-    // AJOUT : Ajout visuel des messages dans la boîte de dialogue
     function appendChatMessage(msg) {
         const box = document.getElementById('chatBox');
         if(box) {
@@ -298,7 +281,6 @@
         }
     }
 
-    // AJOUT : Génération du tracé sur l'élément Canvas
     function drawChart(newBpm) {
         const canvas = document.getElementById('bpmChart');
         if (!canvas) return;
@@ -322,7 +304,6 @@
         ctx.stroke();
     }
 
-    // AJOUT : Logique de coupure de l'appel et archivage immédiat des données
     async function endCall() {
         if(activeCallId && currentUser) {
             await fetch('/api/history', {
@@ -339,12 +320,17 @@
         cleanCallUI();
     }
 
-    function cleanCallUI() {
+    function closeMediaConnections() {
         if (sensorInterval) clearInterval(sensorInterval);
         if (localStream) localStream.getTracks().forEach(t => t.stop());
-        if (peerConnection) peerConnection.close();
+        if (localPeerConnection) localPeerConnection.close();
+        if (remotePeerConnection) remotePeerConnection.close();
+        localStream = localPeerConnection = remotePeerConnection = null;
+    }
+
+    function cleanCallUI() {
+        closeMediaConnections();
         activeCallId = targetSocketId = null;
-        localStream = peerConnection = null;
         bpmHistory = []; 
         const area = document.getElementById('consultationArea');
         if (area) area.innerHTML = '';
@@ -359,7 +345,7 @@
             const heartDiv = document.getElementById('heartRate');
             if (heartDiv) heartDiv.innerText = `${bpm} BPM`;
             
-            drawChart(bpm); // Mise à jour immédiate du graphique
+            drawChart(bpm);
 
             const fhir = {
                 resourceType: "Observation",
@@ -374,7 +360,6 @@
             };
             const fhirDiv = document.getElementById('fhirJson');
             if (fhirDiv) fhirDiv.innerHTML = `<pre>${JSON.stringify(fhir, null, 2)}</pre>`;
-            if (targetSocketId) socket.emit('sensor:data', { targetSocketId, fhir });
         }, 3000);
     }
 
@@ -388,14 +373,14 @@
             <div id="appointmentsList"></div>
             <div id="consultationArea"></div>
             <div class="card" style="margin-top:20px;">
-                <h3>📜 Suivi global de télésurveillance (Historique)</h3>
+                <h3>📜 Suivi global de télésurveillance (Historique des consultations)</h3>
                 <div id="historyList">Chargement...</div>
             </div>
         `;
         document.getElementById('appointmentsList').innerHTML = appointments.length ? appointments.map(a => `
             <div class="slot">
                 <div><strong>${a.patientName}</strong> - Le ${new Date(a.start).toLocaleString()}</div>
-                <button onclick="startDoctorCall('${a.id}','${a.patientId}','${a.patientName}')" class="btn-success">Démarrer l'appel WebRTC</button>
+                <button onclick="startDoctorCall('${a.id}','${a.patientId}','${a.patientName}')" class="btn-success">Démarrer la téléconsultation</button>
             </div>
         `).join('') : '<p>Aucun rendez-vous planifié.</p>';
         loadHistory();
@@ -442,7 +427,7 @@
                 <div>Dr. ${a.doctorName} le ${new Date(a.start).toLocaleString()}</div>
                 <div>
                     <button onclick="cancelAppointment('${a.id}')" class="btn-danger">Annuler</button> 
-                    <button onclick="joinAppointment('${a.id}','${a.doctorId}')" class="btn-success">Rejoindre</button>
+                    <button onclick="joinAppointment('${a.id}','${a.doctorId}')" class="btn-success">Rejoindre la téléconsultation</button>
                 </div>
             </div>
         `).join('') : '<p>Aucun rendez-vous pris.</p>';
@@ -510,7 +495,6 @@
         socket.emit('call:request', { appointmentId: appId, patientId: currentUser.id, patientName: currentUser.name, doctorId: docId, doctorName: selectedDoctorName });
     };
 
-    // AJOUT : Récupération AJAX et injection de l'historique dans l'interface
     async function loadHistory() {
         const res = await fetch('/api/history');
         const history = await res.json();
