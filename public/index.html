@@ -172,12 +172,19 @@
 
     async function startCall(isInitiator) {
         try {
-            // 1. Demander la caméra
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
 
-            // 2. Créer l'interface d'appel dans consultationArea
-            const container = document.getElementById('consultationArea');
-            if (!container) throw new Error("Zone consultationArea introuvable");
+            let container = document.getElementById('consultationArea');
+            if (!container) {
+                const dash = document.getElementById('dashboardContent');
+                if (dash) {
+                    const div = document.createElement('div');
+                    div.id = 'consultationArea';
+                    dash.appendChild(div);
+                    container = div;
+                } else throw new Error("dashboardContent introuvable");
+            }
+
             container.innerHTML = `
                 <div class="video-container">
                     <div><h3>Vous</h3><video id="localVideo" autoplay muted playsinline style="width:100%; max-width:400px"></video></div>
@@ -195,9 +202,7 @@
             const localVideo = document.getElementById('localVideo');
             const remoteVideo = document.getElementById('remoteVideo');
             if (localVideo) localVideo.srcObject = localStream;
-            else console.error("localVideo manquant");
 
-            // 3. Créer la connexion WebRTC
             peerConnection = new RTCPeerConnection(ICE_CONFIG);
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
             peerConnection.ontrack = event => {
@@ -244,6 +249,8 @@
         if (activeCallId) socket.emit('call:end', { callId: activeCallId });
         activeCallId = targetSocketId = null;
         localStream = peerConnection = null;
+        const area = document.getElementById('consultationArea');
+        if (area) area.innerHTML = '';
         if (currentUser.role === 'medecin') loadDoctorDashboard();
         else loadPatientDashboard();
     }
@@ -271,7 +278,7 @@
         }, 5000);
     }
 
-    // ----- Médecin -----
+    // ---------- Médecin ----------
     async function loadDoctorDashboard() {
         const res = await fetch(`/api/doctors/${currentUser.doctorId}/appointments`);
         const appointments = await res.json();
@@ -292,7 +299,7 @@
         socket.emit('call:request', { appointmentId: appId, patientId, patientName, doctorId: currentUser.doctorId, doctorName: currentUser.name });
     };
 
-    // ----- Patient -----
+    // ---------- Patient ----------
     async function loadPatientDashboard() {
         const doctors = await (await fetch('/api/doctors')).json();
         const myApps = await (await fetch(`/api/patients/${currentUser.id}/appointments`)).json();
