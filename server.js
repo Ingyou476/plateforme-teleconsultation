@@ -4,17 +4,18 @@ const fs = require('fs');
 const path = require('path');
 const socketIo = require('socket.io');
 const os = require('os');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = 3443;
 
 // ---------- En-têtes de Sécurité (Cybersecurity) ----------
 app.use((req, res, next) => {
-    res.setHeader("X-Frame-Options", "DENY"); // Protège contre le Clickjacking
-    res.setHeader("X-Content-Type-Options", "nosniff"); // Évite le MIME sniffing
-    res.setHeader("X-XSS-Protection", "1; mode=block"); // Protection XSS basique pour navigateurs anciens
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Content-Security-Policy", "default-src 'self' https://stun.l.google.com:19302; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss: https:; video-src 'self' blob:; font-src 'self';");
-    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains"); // Force le HTTPS
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     next();
 });
 
@@ -50,6 +51,15 @@ const appointments = [];
 const consultationHistory = [];
 const activeSessions = new Map();
 
+// ---------- 2FA : sessions temporaires en attente de vérification ----------
+const pending2FASessions = new Map(); // key: tempId, value: { user, expiresAt }
+const ADMIN_2FA_QUESTIONS = [
+    "Quelle est votre couleur préférée ?",
+    "Nom de votre premier animal de compagnie ?",
+    "Ville de naissance ?"
+];
+const ADMIN_2FA_ANSWERS = ["Bleu", "Rex", "Paris"]; // Correspondance exacte (case‑sensitive)
+
 // --- Système de Logs d'Audit (Cybersecurity Monitoring) ---
 const securityLogs = [];
 
@@ -57,7 +67,7 @@ function logActivity(userId, username, role, action, status, details, req = null
     let ip = "0.0.0.0";
     if (req) {
         ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || "0.0.0.0";
-        if (ip.substr(0, 7) == "::ffff:") ip = ip.substr(7); // Nettoyage IPv6
+        if (ip.substr(0, 7) == "::ffff:") ip = ip.substr(7);
     }
     const logEntry = {
         id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -70,16 +80,14 @@ function logActivity(userId, username, role, action, status, details, req = null
         details,
         ip
     };
-    securityLogs.unshift(logEntry); // Placer le plus récent en premier
-    if (securityLogs.length > 500) securityLogs.pop(); // Limite mémoire
-
-    // Diffusion en direct aux administrateurs connectés
+    securityLogs.unshift(logEntry);
+    if (securityLogs.length > 500) securityLogs.pop();
     io.to('role-admin').emit('admin:new-log', logEntry);
 }
 
 // ---------- Routes API ----------
 
-// INSCRIPTION
+// INSCRIPTION (inchangée)
 app.post('/api/register', (req, res) => {
     const { name, email, password, role, specialty, description } = req.body;
     if (!name || !email || !password || !role) {
@@ -123,7 +131,7 @@ app.post('/api/register', (req, res) => {
     res.json({ success: true, message: 'Inscription réussie' });
 });
 
-// CONNEXION
+// CONNEXION ÉTAPE 1 (vérification identifiants + déclenchement 2FA pour admin)
 app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
     const user = users.find(u => u.email === email && u.password === password);
@@ -133,6 +141,24 @@ app.post('/api/login', (req, res) => {
         return res.status(401).json({ success: false, message: 'Identifiants invalides' });
     }
 
+    // --- 2FA pour administrateur ---
+    if (user.role === 'admin') {
+        // Générer une session 2FA temporaire
+        const tempId = crypto.randomBytes(32).toString('hex');
+        pending2FASessions.set(tempId, {
+            user: { ...user }, // copie pour éviter mutation
+            expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes
+        });
+        logActivity(user.id, user.name, user.role, '2FA_PENDING', true, 'Authentification primaire OK, en attente validation 2FA', req);
+        return res.json({
+            success: true,
+            requiresTwoFactor: true,
+            tempId: tempId,
+            questions: ADMIN_2FA_QUESTIONS
+        });
+    }
+
+    // --- Cas normal (patient/médecin) sans 2FA ---
     const oldSocketId = activeSessions.get(user.id);
     if (oldSocketId) {
         const oldSocket = io.sockets.sockets.get(oldSocketId);
@@ -147,7 +173,6 @@ app.post('/api/login', (req, res) => {
     }
 
     logActivity(user.id, user.name, user.role, 'CONNEXION', true, 'Authentification réussie', req);
-    
     res.json({
         success: true,
         user: {
@@ -160,13 +185,66 @@ app.post('/api/login', (req, res) => {
     });
 });
 
-// --- ROUTES APIS RESERVÉES ADMIN ---
+// VÉRIFICATION 2FA (étape 2)
+app.post('/api/verify-2fa', (req, res) => {
+    const { tempId, answers } = req.body;
+    if (!tempId || !answers || !Array.isArray(answers) || answers.length !== 3) {
+        return res.status(400).json({ success: false, message: 'Données 2FA invalides' });
+    }
+
+    const pending = pending2FASessions.get(tempId);
+    if (!pending || pending.expiresAt < Date.now()) {
+        pending2FASessions.delete(tempId);
+        logActivity(null, 'admin', 'admin', '2FA_VERIFY', false, 'Session 2FA expirée ou introuvable', req);
+        return res.status(401).json({ success: false, message: 'Session expirée, veuillez vous reconnecter' });
+    }
+
+    const user = pending.user;
+    // Comparaison des réponses (insensible à la casse pour plus de tolérance, mais stricte pour la démo)
+    const isMatch = answers.length === ADMIN_2FA_ANSWERS.length &&
+                    answers.every((ans, idx) => ans.trim() === ADMIN_2FA_ANSWERS[idx]);
+
+    if (!isMatch) {
+        logActivity(user.id, user.name, user.role, '2FA_VERIFY', false, 'Réponses aux questions de sécurité incorrectes', req);
+        pending2FASessions.delete(tempId);
+        return res.status(401).json({ success: false, message: 'Réponses incorrectes, accès refusé' });
+    }
+
+    // Succès 2FA : finaliser la connexion
+    const oldSocketId = activeSessions.get(user.id);
+    if (oldSocketId) {
+        const oldSocket = io.sockets.sockets.get(oldSocketId);
+        if (oldSocket) oldSocket.emit('force-logout', { message: 'Connexion depuis un autre appareil' });
+        activeSessions.delete(user.id);
+    }
+
+    let doctorInfo = null;
+    if (user.role === 'medecin') {
+        doctorInfo = doctors.find(d => d.userId === user.id);
+    }
+
+    pending2FASessions.delete(tempId);
+    logActivity(user.id, user.name, user.role, '2FA_VERIFY', true, 'Double authentification réussie', req);
+    logActivity(user.id, user.name, user.role, 'CONNEXION', true, 'Authentification complète (2FA validée)', req);
+
+    res.json({
+        success: true,
+        user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            doctorId: doctorInfo?.id || null
+        }
+    });
+});
+
+// --- ROUTES APIS RESERVÉES ADMIN (inchangées) ---
 app.get('/api/admin/logs', (req, res) => {
     res.json(securityLogs);
 });
 
 app.get('/api/admin/users', (req, res) => {
-    // Renvoie la liste sans les mots de passe par sécurité
     res.json(users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role })));
 });
 
@@ -337,7 +415,6 @@ io.on('connection', (socket) => {
         activeSessions.set(data.userId, socket.id);
         socket.join(`user-${data.userId}`);
         
-        // Si l'utilisateur est admin, on le joint à une room spéciale pour le streaming des logs
         if(data.role === 'admin') {
             socket.join('role-admin');
         }
@@ -438,16 +515,21 @@ function getLocalIp() {
 server.listen(PORT, '0.0.0.0', () => {
     const ip = getLocalIp();
     
-    // Injecter un compte administrateur par défaut au démarrage pour les tests de cybersécurité
-    users.push({
-        id: "admin-1337",
-        name: "Cyber Admin",
-        email: "admin@cyber.fr",
-        password: "admincyberpass",
-        role: "admin"
-    });
+    // Création du compte administrateur par défaut (déjà présent, éviter doublon)
+    const existingAdmin = users.find(u => u.email === "admin@cyber.fr");
+    if (!existingAdmin) {
+        users.push({
+            id: "admin-1337",
+            name: "Cyber Admin",
+            email: "admin@cyber.fr",
+            password: "admincyberpass",
+            role: "admin"
+        });
+    }
 
     console.log(`\n🔒 Serveur Securisé HTTPS démarré sur https://${ip}:${PORT}`);
     console.log(`🛡️  Fonctionnalités Cyber: CSP, X-Frame-Options, HSTS & Audit Trail actifs.`);
-    console.log(`👤 Compte Admin Démo : admin@cyber.fr / admincyberpass\n`);
+    console.log(`👤 Compte Admin Démo : admin@cyber.fr / admincyberpass`);
+    console.log(`🔐 2FA Questions : ${ADMIN_2FA_QUESTIONS.join(', ')}`);
+    console.log(`🔑 Réponses : ${ADMIN_2FA_ANSWERS.join(', ')}`);
 });
