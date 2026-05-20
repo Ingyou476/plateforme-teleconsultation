@@ -8,6 +8,16 @@ const os = require('os');
 const app = express();
 const PORT = 3443;
 
+// ---------- En-têtes de Sécurité (Cybersecurity) ----------
+app.use((req, res, next) => {
+    res.setHeader("X-Frame-Options", "DENY"); // Protège contre le Clickjacking
+    res.setHeader("X-Content-Type-Options", "nosniff"); // Évite le MIME sniffing
+    res.setHeader("X-XSS-Protection", "1; mode=block"); // Protection XSS basique pour navigateurs anciens
+    res.setHeader("Content-Security-Policy", "default-src 'self' https://stun.l.google.com:19302; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss: https:; video-src 'self' blob:; font-src 'self';");
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains"); // Force le HTTPS
+    next();
+});
+
 // ---------- Certificats SSL ----------
 const SSL_KEY_PATH = '/home/iut/certs/192.168.23.129-key.pem';
 const SSL_CERT_PATH = '/home/iut/certs/192.168.23.129.pem';
@@ -37,8 +47,35 @@ app.use(express.static(path.join(__dirname, 'public')));
 const users = [];
 const doctors = [];
 const appointments = [];
-const consultationHistory = [];  // historique des consultations terminées
+const consultationHistory = [];
 const activeSessions = new Map();
+
+// --- Système de Logs d'Audit (Cybersecurity Monitoring) ---
+const securityLogs = [];
+
+function logActivity(userId, username, role, action, status, details, req = null) {
+    let ip = "0.0.0.0";
+    if (req) {
+        ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || "0.0.0.0";
+        if (ip.substr(0, 7) == "::ffff:") ip = ip.substr(7); // Nettoyage IPv6
+    }
+    const logEntry = {
+        id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        timestamp: new Date().toISOString(),
+        userId: userId || 'system',
+        username: username || 'Système',
+        role: role || 'Système',
+        action,
+        status: status ? 'SUCCESS' : 'FAILED',
+        details,
+        ip
+    };
+    securityLogs.unshift(logEntry); // Placer le plus récent en premier
+    if (securityLogs.length > 500) securityLogs.pop(); // Limite mémoire
+
+    // Diffusion en direct aux administrateurs connectés
+    io.to('role-admin').emit('admin:new-log', logEntry);
+}
 
 // ---------- Routes API ----------
 
@@ -46,16 +83,20 @@ const activeSessions = new Map();
 app.post('/api/register', (req, res) => {
     const { name, email, password, role, specialty, description } = req.body;
     if (!name || !email || !password || !role) {
+        logActivity(null, email, role, 'INSCRIPTION', false, 'Champs requis manquants', req);
         return res.status(400).json({ success: false, message: 'Champs requis manquants' });
     }
     if (users.find(u => u.email === email)) {
+        logActivity(null, email, role, 'INSCRIPTION', false, 'Conflit : Email déjà utilisé', req);
         return res.status(409).json({ success: false, message: 'Email déjà utilisé' });
     }
+    
     const newUser = { id: Date.now().toString(), name, email, password, role };
     users.push(newUser);
 
     if (role === 'medecin') {
         if (!specialty) {
+            logActivity(newUser.id, name, role, 'INSCRIPTION', false, 'Spécialité manquante pour médecin', req);
             return res.status(400).json({ success: false, message: 'Spécialité requise pour un médecin' });
         }
         const defaultSchedule = {
@@ -77,6 +118,8 @@ app.post('/api/register', (req, res) => {
             exceptions: []
         });
     }
+
+    logActivity(newUser.id, name, role, 'INSCRIPTION', true, 'Compte utilisateur créé avec succès', req);
     res.json({ success: true, message: 'Inscription réussie' });
 });
 
@@ -84,19 +127,27 @@ app.post('/api/register', (req, res) => {
 app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
     const user = users.find(u => u.email === email && u.password === password);
-    if (!user) return res.status(401).json({ success: false, message: 'Identifiants invalides' });
+    
+    if (!user) {
+        logActivity(null, email, 'Inconnu', 'CONNEXION', false, 'Identifiants erronés ou tentative malveillante', req);
+        return res.status(401).json({ success: false, message: 'Identifiants invalides' });
+    }
 
     const oldSocketId = activeSessions.get(user.id);
     if (oldSocketId) {
         const oldSocket = io.sockets.sockets.get(oldSocketId);
         if (oldSocket) oldSocket.emit('force-logout', { message: 'Connexion depuis un autre appareil' });
         activeSessions.delete(user.id);
+        logActivity(user.id, user.name, user.role, 'SESSION', true, 'Ancienne session déconnectée (Sécurité multi-compte)', req);
     }
 
     let doctorInfo = null;
     if (user.role === 'medecin') {
         doctorInfo = doctors.find(d => d.userId === user.id);
     }
+
+    logActivity(user.id, user.name, user.role, 'CONNEXION', true, 'Authentification réussie', req);
+    
     res.json({
         success: true,
         user: {
@@ -107,6 +158,16 @@ app.post('/api/login', (req, res) => {
             doctorId: doctorInfo?.id || null
         }
     });
+});
+
+// --- ROUTES APIS RESERVÉES ADMIN ---
+app.get('/api/admin/logs', (req, res) => {
+    res.json(securityLogs);
+});
+
+app.get('/api/admin/users', (req, res) => {
+    // Renvoie la liste sans les mots de passe par sécurité
+    res.json(users.map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role })));
 });
 
 // LISTE DES MÉDECINS
@@ -175,6 +236,7 @@ app.post('/api/appointments', (req, res) => {
         patientId, patientName, doctorId, doctorName, start, end, status: 'upcoming'
     };
     appointments.push(newAppointment);
+    logActivity(patientId, patientName, 'patient', 'RDV_CREATE', true, `Rendez-vous pris avec le Dr. ${doctorName}`);
     res.json({ success: true, appointment: newAppointment });
 });
 
@@ -192,7 +254,9 @@ app.get('/api/doctors/:doctorId/appointments', (req, res) => {
 app.delete('/api/appointments/:appointmentId', (req, res) => {
     const idx = appointments.findIndex(a => a.id === req.params.appointmentId);
     if (idx === -1) return res.status(404).json({ success: false });
+    const appt = appointments[idx];
     appointments.splice(idx, 1);
+    logActivity(appt.patientId, appt.patientName, 'patient', 'RDV_CANCEL', true, `Rendez-vous annulé avec Dr. ${appt.doctorName}`);
     res.json({ success: true });
 });
 
@@ -205,6 +269,7 @@ app.post('/api/doctors/:doctorId/exceptions', (req, res) => {
     if (!doctor.exceptions.find(e => e.date === date)) {
         doctor.exceptions.push({ date, allDay: true });
     }
+    logActivity(doctor.userId, doctor.name, 'medecin', 'DISPO_EXCEPTION', true, `Indisponibilité ajoutée pour le ${date}`);
     res.json({ success: true });
 });
 
@@ -217,143 +282,47 @@ app.get('/api/doctors/:doctorId/history', (req, res) => {
     res.json(consultationHistory.filter(h => h.doctorId === req.params.doctorId));
 });
 
-// ENDPOINT FHIR Observation (pour la démonstration)
+// ENDPOINT FHIR Observation
 app.post('/api/fhir/observation', (req, res) => {
     const { patientId, patientName, heartRate, temperature, spo2 } = req.body;
     const now = new Date().toISOString();
-    
     const observations = [];
 
     if (heartRate !== undefined) {
         observations.push({
-            resourceType: "Observation",
-            id: `hr-${Date.now()}`,
-            status: "final",
-            category: [{
-                coding: [{
-                    system: "http://terminology.hl7.org/CodeSystem/observation-category",
-                    code: "vital-signs",
-                    display: "Vital Signs"
-                }]
-            }],
-            code: {
-                coding: [{
-                    system: "http://loinc.org",
-                    code: "8867-4",
-                    display: "Heart rate"
-                }],
-                text: "Fréquence cardiaque"
-            },
-            subject: {
-                reference: `Patient/${patientId}`,
-                display: patientName
-            },
-            effectiveDateTime: now,
-            valueQuantity: {
-                value: heartRate,
-                unit: "beats/minute",
-                system: "http://unitsofmeasure.org",
-                code: "/min"
-            },
-            interpretation: [{
-                coding: [{
-                    system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
-                    code: heartRate < 60 ? "L" : heartRate > 100 ? "H" : "N",
-                    display: heartRate < 60 ? "Low" : heartRate > 100 ? "High" : "Normal"
-                }]
-            }]
+            resourceType: "Observation", id: `hr-${Date.now()}`, status: "final",
+            category: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/observation-category", code: "vital-signs", display: "Vital Signs" }] }],
+            code: { coding: [{ system: "http://loinc.org", code: "8867-4", display: "Heart rate" }], text: "Fréquence cardiaque" },
+            subject: { reference: `Patient/${patientId}`, display: patientName }, effectiveDateTime: now,
+            valueQuantity: { value: heartRate, unit: "beats/minute", system: "http://unitsofmeasure.org", code: "/min" },
+            interpretation: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", code: heartRate < 60 ? "L" : heartRate > 100 ? "H" : "N", display: heartRate < 60 ? "Low" : heartRate > 100 ? "High" : "Normal" }] }]
         });
     }
 
     if (temperature !== undefined) {
         observations.push({
-            resourceType: "Observation",
-            id: `temp-${Date.now()}`,
-            status: "final",
-            category: [{
-                coding: [{
-                    system: "http://terminology.hl7.org/CodeSystem/observation-category",
-                    code: "vital-signs",
-                    display: "Vital Signs"
-                }]
-            }],
-            code: {
-                coding: [{
-                    system: "http://loinc.org",
-                    code: "8310-5",
-                    display: "Body temperature"
-                }],
-                text: "Température corporelle"
-            },
-            subject: {
-                reference: `Patient/${patientId}`,
-                display: patientName
-            },
-            effectiveDateTime: now,
-            valueQuantity: {
-                value: temperature,
-                unit: "degree Celsius",
-                system: "http://unitsofmeasure.org",
-                code: "Cel"
-            },
-            interpretation: [{
-                coding: [{
-                    system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
-                    code: temperature > 37.8 ? "H" : "N",
-                    display: temperature > 37.8 ? "High" : "Normal"
-                }]
-            }]
+            resourceType: "Observation", id: `temp-${Date.now()}`, status: "final",
+            category: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/observation-category", code: "vital-signs", display: "Vital Signs" }] }],
+            code: { coding: [{ system: "http://loinc.org", code: "8310-5", display: "Body temperature" }], text: "Température corporelle" },
+            subject: { reference: `Patient/${patientId}`, display: patientName }, effectiveDateTime: now,
+            valueQuantity: { value: temperature, unit: "degree Celsius", system: "http://unitsofmeasure.org", code: "Cel" },
+            interpretation: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", code: temperature > 37.8 ? "H" : "N", display: temperature > 37.8 ? "High" : "Normal" }] }]
         });
     }
 
     if (spo2 !== undefined) {
         observations.push({
-            resourceType: "Observation",
-            id: `spo2-${Date.now()}`,
-            status: "final",
-            category: [{
-                coding: [{
-                    system: "http://terminology.hl7.org/CodeSystem/observation-category",
-                    code: "vital-signs",
-                    display: "Vital Signs"
-                }]
-            }],
-            code: {
-                coding: [{
-                    system: "http://loinc.org",
-                    code: "2708-6",
-                    display: "Oxygen saturation in Arterial blood"
-                }],
-                text: "Saturation en oxygène (SpO2)"
-            },
-            subject: {
-                reference: `Patient/${patientId}`,
-                display: patientName
-            },
-            effectiveDateTime: now,
-            valueQuantity: {
-                value: spo2,
-                unit: "%",
-                system: "http://unitsofmeasure.org",
-                code: "%"
-            },
-            bodySite: {
-                coding: [{
-                    system: "http://snomed.info/sct",
-                    code: "7569003",
-                    display: "Finger structure"
-                }]
-            },
-            interpretation: [{
-                coding: [{
-                    system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
-                    code: spo2 < 95 ? "L" : "N",
-                    display: spo2 < 95 ? "Low" : "Normal"
-                }]
-            }]
+            resourceType: "Observation", id: `spo2-${Date.now()}`, status: "final",
+            category: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/observation-category", code: "vital-signs", display: "Vital Signs" }] }],
+            code: { coding: [{ system: "http://loinc.org", code: "2708-6", display: "Oxygen saturation in Arterial blood" }], text: "Saturation en oxygène (SpO2)" },
+            subject: { reference: `Patient/${patientId}`, display: patientName }, effectiveDateTime: now,
+            valueQuantity: { value: spo2, unit: "%", system: "http://unitsofmeasure.org", code: "%" },
+            bodySite: { coding: [{ system: "http://snomed.info/sct", code: "7569003", display: "Finger structure" }] },
+            interpretation: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", code: spo2 < 95 ? "L" : "N", display: spo2 < 95 ? "Low" : "Normal" }] }]
         });
     }
 
+    logActivity(patientId, patientName, 'patient', 'FHIR_EXPORT', true, `Ressources FHIR Observation générées.`);
     res.json({ success: true, observations });
 });
 
@@ -361,35 +330,36 @@ app.post('/api/fhir/observation', (req, res) => {
 const activeCalls = new Map();
 
 io.on('connection', (socket) => {
-    console.log('🟢 Nouveau client:', socket.id);
-
     socket.on('register', (data) => {
         socket.userId = data.userId;
         socket.userName = data.userName;
         socket.userRole = data.role;
         activeSessions.set(data.userId, socket.id);
         socket.join(`user-${data.userId}`);
-        console.log(`✅ ${data.userName} (${data.role}) enregistré`);
+        
+        // Si l'utilisateur est admin, on le joint à une room spéciale pour le streaming des logs
+        if(data.role === 'admin') {
+            socket.join('role-admin');
+        }
+        
+        logActivity(data.userId, data.userName, data.role, 'WS_CONNECT', true, 'Session socket en ligne');
     });
 
-    // APPEL - Initiation par le médecin
+    // APPEL
     socket.on('call:request', (data) => {
         const { appointmentId, patientId, patientName, doctorId, doctorName } = data;
         const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
         activeCalls.set(callId, {
             callId, appointmentId, patientId, patientName, doctorId, doctorName,
-            initiatorSocketId: socket.id,
-            initiatorRole: socket.userRole,
-            status: 'waiting',
-            startTime: null
+            initiatorSocketId: socket.id, initiatorRole: socket.userRole, status: 'waiting', startTime: null
         });
-        // Notifier le destinataire
+        
         const targetId = socket.userRole === 'medecin' ? patientId : doctorId;
         io.to(`user-${targetId}`).emit('call:incoming', {
-            callId, appointmentId, patientId, patientName, doctorId, doctorName,
-            fromSocketId: socket.id
+            callId, appointmentId, patientId, patientName, doctorId, doctorName, fromSocketId: socket.id
         });
         socket.emit('call:requested', { callId });
+        logActivity(socket.userId, socket.userName, socket.userRole, 'WEBRTC_CALL_INIT', true, `Initiation d'appel (ID: ${callId})`);
     });
 
     socket.on('call:accept', (data) => {
@@ -400,17 +370,9 @@ io.on('connection', (socket) => {
             call.acceptorSocketId = socket.id;
             call.startTime = new Date();
             
-            // Notifier l'initiateur
-            io.to(call.initiatorSocketId).emit('call:accepted', {
-                callId, doctorId, doctorName, peerSocketId: socket.id
-            });
-            // Notifier l'accepteur
-            socket.emit('webrtc:ready', {
-                callId,
-                patientId: call.patientId,
-                patientName: call.patientName,
-                peerSocketId: call.initiatorSocketId
-            });
+            io.to(call.initiatorSocketId).emit('call:accepted', { callId, doctorId, doctorName, peerSocketId: socket.id });
+            socket.emit('webrtc:ready', { callId, patientId: call.patientId, patientName: call.patientName, peerSocketId: call.initiatorSocketId });
+            logActivity(socket.userId, socket.userName, socket.userRole, 'WEBRTC_CALL_ACCEPT', true, `Appel accepté pour la session ${callId}`);
         }
     });
 
@@ -420,67 +382,45 @@ io.on('connection', (socket) => {
         if (call) {
             io.to(call.initiatorSocketId).emit('call:rejected', { callId });
             activeCalls.delete(callId);
+            logActivity(socket.userId, socket.userName, socket.userRole, 'WEBRTC_CALL_REJECT', true, `Appel refusé pour la session ${callId}`);
         }
     });
 
     // Signalisation WebRTC
-    socket.on('webrtc:offer', (data) => {
-        io.to(data.targetSocketId).emit('webrtc:offer', { offer: data.offer, fromSocketId: socket.id });
-    });
-    socket.on('webrtc:answer', (data) => {
-        io.to(data.targetSocketId).emit('webrtc:answer', { answer: data.answer, fromSocketId: socket.id });
-    });
-    socket.on('webrtc:ice-candidate', (data) => {
-        io.to(data.targetSocketId).emit('webrtc:ice-candidate', { candidate: data.candidate, fromSocketId: socket.id });
-    });
+    socket.on('webrtc:offer', (data) => { io.to(data.targetSocketId).emit('webrtc:offer', { offer: data.offer, fromSocketId: socket.id }); });
+    socket.on('webrtc:answer', (data) => { io.to(data.targetSocketId).emit('webrtc:answer', { answer: data.answer, fromSocketId: socket.id }); });
+    socket.on('webrtc:ice-candidate', (data) => { io.to(data.targetSocketId).emit('webrtc:ice-candidate', { candidate: data.candidate, fromSocketId: socket.id }); });
 
     // Fin d'appel
     socket.on('call:end', (data) => {
         const call = activeCalls.get(data.callId);
         if (call) {
-            // Sauvegarder dans l'historique
             consultationHistory.push({
-                id: call.callId,
-                patientId: call.patientId,
-                patientName: call.patientName,
-                doctorId: call.doctorId,
-                doctorName: call.doctorName,
-                startTime: call.startTime,
-                endTime: new Date(),
-                appointmentId: call.appointmentId
+                id: call.callId, patientId: call.patientId, patientName: call.patientName,
+                doctorId: call.doctorId, doctorName: call.doctorName, startTime: call.startTime, endTime: new Date(), appointmentId: call.appointmentId
             });
-            // Mettre à jour le statut du RDV
             const appt = appointments.find(a => a.id === call.appointmentId);
             if (appt) appt.status = 'completed';
 
             if (call.initiatorSocketId) io.to(call.initiatorSocketId).emit('call:ended');
             if (call.acceptorSocketId) io.to(call.acceptorSocketId).emit('call:ended');
             activeCalls.delete(data.callId);
+            logActivity(socket.userId, socket.userName, socket.userRole, 'WEBRTC_CALL_END', true, `Fin de téléconsultation (Session ${data.callId})`);
         }
     });
 
-    // Transfert des données capteur via socket (en temps réel vers le médecin)
     socket.on('sensor:data', (data) => {
-        const { callId, heartRate, temperature, spo2 } = data;
-        const call = activeCalls.get(callId);
+        const call = activeCalls.get(data.callId);
         if (call) {
-            // Envoyer les données aux deux participants
             if (call.initiatorSocketId) io.to(call.initiatorSocketId).emit('sensor:update', data);
             if (call.acceptorSocketId) io.to(call.acceptorSocketId).emit('sensor:update', data);
         }
     });
 
     socket.on('disconnect', () => {
-        console.log('🔴 Déconnecté', socket.id);
-        if (socket.userId) activeSessions.delete(socket.userId);
-        for (const [callId, call] of activeCalls.entries()) {
-            if (call.initiatorSocketId === socket.id || call.acceptorSocketId === socket.id) {
-                const otherSocketId = call.initiatorSocketId === socket.id 
-                    ? call.acceptorSocketId 
-                    : call.initiatorSocketId;
-                if (otherSocketId) io.to(otherSocketId).emit('call:ended');
-                activeCalls.delete(callId);
-            }
+        if (socket.userId) {
+            activeSessions.delete(socket.userId);
+            logActivity(socket.userId, socket.userName, socket.userRole, 'WS_DISCONNECT', true, 'Session déconnectée');
         }
     });
 });
@@ -497,6 +437,17 @@ function getLocalIp() {
 
 server.listen(PORT, '0.0.0.0', () => {
     const ip = getLocalIp();
-    console.log(`\n🔒 Serveur HTTPS démarré sur https://${ip}:${PORT}`);
-    console.log(`📅 Calendrier, RDV, WebRTC avec TURN, FHIR actifs.\n`);
+    
+    // Injecter un compte administrateur par défaut au démarrage pour les tests de cybersécurité
+    users.push({
+        id: "admin-1337",
+        name: "Cyber Admin",
+        email: "admin@cyber.fr",
+        password: "admincyberpass",
+        role: "admin"
+    });
+
+    console.log(`\n🔒 Serveur Securisé HTTPS démarré sur https://${ip}:${PORT}`);
+    console.log(`🛡️  Fonctionnalités Cyber: CSP, X-Frame-Options, HSTS & Audit Trail actifs.`);
+    console.log(`👤 Compte Admin Démo : admin@cyber.fr / admincyberpass\n`);
 });

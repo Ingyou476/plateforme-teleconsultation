@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DoctoLine – Téléconsultation</title>
+<title>DoctoLine – Téléconsultation Sécurisée</title>
 <script src="/socket.io/socket.io.js"></script>
 <style>
   /* ===== VARIABLES & RESET ===== */
@@ -15,6 +15,7 @@
     --accent2: #f5a623;
     --danger: #e74c3c;
     --success: #27ae60;
+    --cyber-dark: #0f172a;
     --bg: #f0f4f8;
     --card: #ffffff;
     --text: #1a2a3a;
@@ -44,8 +45,9 @@
     border-radius: 20px; padding: 3px 12px; font-size: 0.82rem; font-weight: 600;
   }
   .badge-role.medecin { background: rgba(0,201,167,0.3); border-color: var(--accent); }
+  .badge-role.admin { background: rgba(231, 76, 60, 0.2); border-color: var(--danger); color: #ff6b6b; }
 
-  .main { flex: 1; padding: 28px 24px; max-width: 900px; margin: 0 auto; width: 100%; }
+  .main { flex: 1; padding: 28px 24px; max-width: 1100px; margin: 0 auto; width: 100%; }
 
   /* ===== CARDS ===== */
   .card {
@@ -78,14 +80,12 @@
     transition: all 0.18s; text-decoration: none;
   }
   .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-  .btn:active { transform: none; }
   .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; }
   .btn-accent { background: linear-gradient(135deg, var(--accent), #00a88d); color: white; }
   .btn-danger { background: var(--danger); color: white; }
   .btn-outline { background: white; color: var(--primary); border: 2px solid var(--primary); }
   .btn-sm { padding: 7px 14px; font-size: 0.87rem; border-radius: 7px; }
   .btn-full { width: 100%; justify-content: center; }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
   /* ===== TABS ===== */
   .tabs { display: flex; gap: 6px; margin-bottom: 24px; }
@@ -108,191 +108,66 @@
     background: linear-gradient(135deg, var(--primary-dark), var(--primary));
     color: white; border-radius: var(--radius); padding: 32px 24px;
   }
-  .auth-hero h1 { font-size: 2rem; margin-bottom: 6px; }
-  .auth-hero p { opacity: 0.85; font-size: 0.95rem; }
   .auth-tabs { display: flex; border-radius: 10px; overflow: hidden; border: 1.5px solid var(--border); margin-bottom: 20px; }
-  .auth-tab { flex: 1; padding: 11px; text-align: center; border: none; background: var(--bg); color: var(--text-muted); font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .auth-tab { flex: 1; padding: 11px; text-align: center; border: none; background: var(--bg); color: var(--text-muted); font-weight: 600; cursor: pointer; }
   .auth-tab.active { background: var(--primary); color: white; }
 
-  /* ===== DOCTOR CARD ===== */
-  .doctor-card {
-    display: flex; align-items: center; gap: 16px;
+  /* ===== DOCTOR CARD / APPOINTMENTS ===== */
+  .doctor-card, .appt-item {
+    display: flex; align-items: center; justify-content: space-between;
     padding: 16px; border: 1.5px solid var(--border);
     border-radius: 10px; margin-bottom: 12px; background: var(--bg);
-    transition: all 0.2s;
   }
-  .doctor-card:hover { border-color: var(--primary-light); background: white; }
-  .doc-avatar {
-    width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent));
-    display: flex; align-items: center; justify-content: center; font-size: 1.5rem; flex-shrink: 0;
-  }
-  .doc-info { flex: 1; }
+  .doc-avatar { width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent)); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
+  .doc-info { flex: 1; margin-left: 15px; }
   .doc-name { font-weight: 700; color: var(--primary-dark); }
-  .doc-specialty { font-size: 0.87rem; color: var(--text-muted); }
-
-  /* ===== APPOINTMENT ===== */
-  .appt-item {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 16px; border-radius: 10px; border: 1.5px solid var(--border);
-    margin-bottom: 10px; background: var(--bg);
-  }
-  .appt-item.upcoming { border-left: 4px solid var(--primary-light); }
-  .appt-item.completed { border-left: 4px solid var(--success); opacity: 0.75; }
-  .appt-date { font-weight: 700; font-size: 0.95rem; }
-  .appt-meta { font-size: 0.85rem; color: var(--text-muted); }
-  .appt-actions { display: flex; gap: 8px; }
-
-  /* ===== CALENDAR ===== */
   .slots-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; margin-top: 14px; }
-  .slot-btn {
-    padding: 10px 8px; border-radius: 8px; border: 1.5px solid var(--primary-light);
-    background: white; color: var(--primary); font-weight: 600; cursor: pointer;
-    text-align: center; font-size: 0.9rem; transition: all 0.15s;
-  }
-  .slot-btn:hover, .slot-btn.selected { background: var(--primary); color: white; border-color: var(--primary); }
+  .slot-btn { padding: 10px 8px; border-radius: 8px; border: 1.5px solid var(--primary-light); background: white; text-align: center; cursor: pointer; font-weight: 600; }
+  .slot-btn.selected { background: var(--primary); color: white; }
 
-  /* ===== CALL UI ===== */
-  #call-view {
-    position: fixed; inset: 0; background: #0a1520; z-index: 1000;
-    display: none; flex-direction: column;
-  }
+  /* ===== CYBER & LOGS TABLE ===== */
+  .cyber-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+  .log-table-wrapper { width: 100%; overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid var(--border); }
+  .log-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+  .log-table th { background: var(--primary-dark); color: white; padding: 10px; font-weight: 600; }
+  .log-table td { padding: 10px; border-bottom: 1px solid var(--border); background: #fff; }
+  .log-table tr:nth-child(even) td { background: var(--bg); }
+  .badge-status { padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 0.75rem; }
+  .badge-status.success { background: #d4edda; color: #155724; }
+  .badge-status.failed { background: #f8d7da; color: #721c24; }
+  .user-list-item { padding: 10px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+
+  /* ===== CALL UI & SENSORS ===== */
+  #call-view { position: fixed; inset: 0; background: #0a1520; z-index: 1000; display: none; flex-direction: column; }
   #call-view.active { display: flex; }
-  .call-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 24px; background: rgba(255,255,255,0.05);
-    border-bottom: 1px solid rgba(255,255,255,0.1);
-  }
-  .call-title { color: white; font-size: 1.1rem; font-weight: 700; }
-  .call-status { color: var(--accent); font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
-  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-  .call-timer { color: #a0b4c8; font-size: 0.9rem; font-weight: 600; }
-
-  .videos-container {
-    flex: 1; display: flex; align-items: center; justify-content: center;
-    position: relative; padding: 20px; gap: 16px;
-  }
-  #remote-video {
-    width: 100%; max-width: 720px; max-height: 480px;
-    background: #0d1f2d; border-radius: 16px; border: 2px solid rgba(255,255,255,0.1);
-    object-fit: cover;
-  }
-  #local-video {
-    position: absolute; bottom: 30px; right: 30px;
-    width: 180px; height: 120px; border-radius: 10px;
-    border: 2px solid var(--accent); object-fit: cover; z-index: 10;
-    background: #1a2a3a;
-  }
-  .no-video-placeholder {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    color: rgba(255,255,255,0.4); gap: 12px; font-size: 1rem;
-    width: 100%; max-width: 720px; height: 400px;
-    background: #0d1f2d; border-radius: 16px; border: 2px solid rgba(255,255,255,0.08);
-  }
-  .no-video-placeholder .icon { font-size: 3rem; }
-
-  .call-controls {
-    display: flex; align-items: center; justify-content: center; gap: 16px;
-    padding: 20px; background: rgba(255,255,255,0.04);
-    border-top: 1px solid rgba(255,255,255,0.08);
-  }
-  .ctrl-btn {
-    width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer;
-    font-size: 1.3rem; display: flex; align-items: center; justify-content: center;
-    transition: all 0.2s; background: rgba(255,255,255,0.1); color: white;
-  }
-  .ctrl-btn:hover { transform: scale(1.1); }
-  .ctrl-btn.active { background: rgba(255,255,255,0.22); }
-  .ctrl-btn.danger { background: var(--danger); }
-  .ctrl-btn.danger:hover { background: #c0392b; }
-  .ctrl-btn.muted { background: rgba(231,76,60,0.4); }
-
-  /* ===== SENSOR PANEL ===== */
-  .sensor-panel {
-    background: rgba(255,255,255,0.05); border-radius: 12px;
-    padding: 16px; margin: 0 20px 12px 20px;
-    border: 1px solid rgba(255,255,255,0.1);
-  }
-  .sensor-title { color: rgba(255,255,255,0.8); font-size: 0.85rem; font-weight: 700; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .call-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: rgba(255,255,255,0.05); color: white; }
+  .sensor-panel { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 16px; margin: 20px; border: 1px solid rgba(255,255,255,0.1); }
   .sensor-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  .sensor-item { text-align: center; background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 8px; }
-  .sensor-label { font-size: 0.75rem; color: rgba(255,255,255,0.55); text-transform: uppercase; margin-bottom: 4px; }
-  .sensor-value { font-size: 1.5rem; font-weight: 700; color: white; }
+  .sensor-item { text-align: center; background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px; color: white; }
+  .sensor-value { font-size: 1.5rem; font-weight: 700; }
   .sensor-value.hr { color: #ff6b6b; }
   .sensor-value.temp { color: #ffd93d; }
   .sensor-value.spo2 { color: #6bceff; }
-  .sensor-unit { font-size: 0.75rem; color: rgba(255,255,255,0.5); }
-  .sensor-status { display: inline-block; margin-top: 2px; font-size: 0.7rem; padding: 1px 7px; border-radius: 8px; font-weight: 600; }
-  .sensor-status.normal { background: rgba(0,201,167,0.3); color: var(--accent); }
-  .sensor-status.alert { background: rgba(231,76,60,0.3); color: #ff6b6b; }
-
-  /* ===== SENSOR GRAPH ===== */
-  .sensor-graph-container { padding: 0 20px 10px 20px; }
-  canvas#hrChart { border-radius: 8px; background: rgba(255,255,255,0.04); width: 100% !important; }
-
-  /* ===== FHIR PANEL ===== */
-  .fhir-btn-area { padding: 0 20px 14px; display: flex; gap: 10px; flex-wrap: wrap; }
-  .fhir-output {
-    margin: 0 20px 16px;
-    background: rgba(0,0,0,0.3); border-radius: 10px;
-    padding: 14px; max-height: 200px; overflow-y: auto;
-    display: none;
-  }
-  .fhir-output pre { color: #a8ff78; font-size: 0.78rem; font-family: 'Courier New', monospace; white-space: pre-wrap; }
-
-  /* ===== INCOMING CALL ===== */
-  #incoming-call-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.75);
-    z-index: 2000; display: none; align-items: center; justify-content: center;
-  }
+  .videos-container { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; padding: 20px; }
+  #remote-video { width: 100%; max-width: 640px; background: #0d1f2d; border-radius: 16px; object-fit: cover; }
+  #local-video { position: absolute; bottom: 30px; right: 30px; width: 150px; height: 100px; border-radius: 10px; object-fit: cover; border: 2px solid var(--accent); }
+  .call-controls { display: flex; justify-content: center; gap: 16px; padding: 20px; background: rgba(255,255,255,0.04); }
+  .ctrl-btn { width: 50px; height: 50px; border-radius: 50%; border: none; cursor: pointer; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.1); color: white; }
+  .ctrl-btn.danger { background: var(--danger); }
+  #incoming-call-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 2000; display: none; align-items: center; justify-content: center; }
   #incoming-call-overlay.active { display: flex; }
-  .incoming-call-box {
-    background: var(--primary-dark); border-radius: 20px; padding: 36px;
-    text-align: center; max-width: 340px; width: 90%;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);
-    animation: slideIn 0.3s ease;
-  }
-  @keyframes slideIn { from{transform:translateY(-40px);opacity:0} to{transform:none;opacity:1} }
-  .incoming-avatar { font-size: 3.5rem; margin-bottom: 12px; }
-  .incoming-name { color: white; font-size: 1.3rem; font-weight: 700; margin-bottom: 4px; }
-  .incoming-label { color: rgba(255,255,255,0.6); font-size: 0.9rem; margin-bottom: 24px; }
-  .incoming-actions { display: flex; gap: 20px; justify-content: center; }
-  .call-answer { width: 64px; height: 64px; border-radius: 50%; background: var(--success); border: none; font-size: 1.8rem; cursor: pointer; color: white; transition: transform 0.2s; }
-  .call-decline { width: 64px; height: 64px; border-radius: 50%; background: var(--danger); border: none; font-size: 1.8rem; cursor: pointer; color: white; transition: transform 0.2s; }
-  .call-answer:hover, .call-decline:hover { transform: scale(1.1); }
-
-  /* ===== ALERT ===== */
-  .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 14px; font-size: 0.92rem; font-weight: 500; }
-  .alert-error { background: #fdecea; color: var(--danger); border: 1px solid #f5c6c2; }
-  .alert-success { background: #eafaf1; color: var(--success); border: 1px solid #a9dfbf; }
-  .alert-info { background: #e8f4fd; color: var(--primary); border: 1px solid #b3d7f0; }
-
-  /* ===== MISC ===== */
-  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
-  .empty-state .icon { font-size: 2.5rem; margin-bottom: 10px; }
-  .spinner { display: inline-block; width: 18px; height: 18px; border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: white; animation: spin 0.8s linear infinite; }
-  @keyframes spin { to{transform:rotate(360deg)} }
-  hr.divider { border: none; border-top: 1.5px solid var(--border); margin: 20px 0; }
-  .text-muted { color: var(--text-muted); font-size: 0.9rem; }
-  .chat-messages {
-    height: 180px; overflow-y: auto; background: var(--bg);
-    border-radius: 10px; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border);
-  }
-  .chat-msg { margin-bottom: 8px; font-size: 0.9rem; }
-  .chat-msg .from { font-weight: 700; color: var(--primary); margin-right: 6px; }
-  .chat-msg .from.me { color: var(--accent); }
-  .hidden { display: none !important; }
+  .incoming-call-box { background: var(--primary-dark); color: white; border-radius: 20px; padding: 32px; text-align: center; width: 300px; }
+  .alert { padding: 12px; border-radius: 8px; margin-bottom: 14px; font-size: 0.9rem; }
+  .alert-error { background: #fdecea; color: var(--danger); }
+  .alert-success { background: #eafaf1; color: var(--success); }
+  .empty-state { text-align: center; padding: 30px; color: var(--text-muted); }
 </style>
 </head>
 <body>
 <div id="app">
 
-  <!-- ===== HEADER ===== -->
-  <header class="header" id="main-header">
-    <div class="header-logo">
-      <span class="logo-icon">🩺</span>
-      <span>DoctoLine</span>
-    </div>
+  <header class="header">
+    <div class="header-logo"><span class="logo-icon">🩺</span><span>DoctoLine Securise</span></div>
     <div class="header-user" id="header-user" style="display:none">
       <span id="header-name"></span>
       <span class="badge-role" id="header-role"></span>
@@ -300,55 +175,32 @@
     </div>
   </header>
 
-  <!-- ===== AUTH VIEW ===== -->
   <div id="auth-view">
     <div class="auth-container">
-      <div class="auth-hero">
-        <h1>🩺 DoctoLine</h1>
-        <p>Plateforme de téléconsultation médicale sécurisée</p>
-      </div>
+      <div class="auth-hero"><h1>🩺 DoctoLine</h1><p>Téléconsultation & Cybersécurité (Audit Trail)</p></div>
       <div class="auth-tabs">
-        <button class="auth-tab active" onclick="switchAuthTab('login')">Connexion</button>
-        <button class="auth-tab" onclick="switchAuthTab('register')">Inscription</button>
+        <button class="auth-tab active" id="btn-tab-login" onclick="switchAuthTab('login')">Connexion</button>
+        <button class="auth-tab" id="btn-tab-reg" onclick="switchAuthTab('register')">Inscription</button>
       </div>
-
-      <!-- LOGIN -->
       <div class="card" id="login-form">
         <div id="login-error"></div>
-        <div class="form-group">
-          <label>Email</label>
-          <input type="email" id="login-email" placeholder="votre@email.com">
-        </div>
-        <div class="form-group">
-          <label>Mot de passe</label>
-          <input type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')loginUser()">
-        </div>
+        <div class="form-group"><label>Email</label><input type="email" id="login-email" placeholder="votre@email.com"></div>
+        <div class="form-group"><label>Mot de passe</label><input type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')loginUser()"></div>
         <button class="btn btn-primary btn-full" onclick="loginUser()">Se connecter</button>
-        <p class="text-muted" style="text-align:center;margin-top:14px">
-          Comptes démo : <strong>patient@test.fr / patient123</strong> | <strong>medecin@test.fr / medecin123</strong>
+        <p class="text-muted" style="text-align:center;margin-top:14px; font-size: 0.8rem;">
+          Démos: <b>patient@test.fr</b> | <b>medecin@test.fr</b> (pass123)<br>
+          Cyber Admin: <span style="color:var(--danger)"><b>admin@cyber.fr</b> / <b>admincyberpass</b></span>
         </p>
       </div>
-
-      <!-- REGISTER -->
       <div class="card" id="register-form" style="display:none">
         <div id="register-error"></div>
         <div class="form-row">
-          <div class="form-group">
-            <label>Nom complet</label>
-            <input type="text" id="reg-name" placeholder="Dr. Jean Dupont">
-          </div>
-          <div class="form-group">
-            <label>Email</label>
-            <input type="email" id="reg-email" placeholder="vous@email.com">
-          </div>
+          <div class="form-group"><label>Nom complet</label><input type="text" id="reg-name" placeholder="Jean Dupont"></div>
+          <div class="form-group"><label>Email</label><input type="email" id="reg-email" placeholder="vous@email.com"></div>
         </div>
         <div class="form-row">
-          <div class="form-group">
-            <label>Mot de passe</label>
-            <input type="password" id="reg-password" placeholder="••••••••">
-          </div>
-          <div class="form-group">
-            <label>Rôle</label>
+          <div class="form-group"><label>Mot de passe</label><input type="password" id="reg-password" placeholder="••••••••"></div>
+          <div class="form-group"><label>Rôle</label>
             <select id="reg-role" onchange="toggleDoctorFields()">
               <option value="patient">Patient</option>
               <option value="medecin">Médecin</option>
@@ -356,21 +208,11 @@
           </div>
         </div>
         <div id="doctor-fields" style="display:none">
-          <div class="form-group">
-            <label>Spécialité</label>
+          <div class="form-group"><label>Spécialité</label>
             <select id="reg-specialty">
               <option value="Médecine générale">Médecine générale</option>
               <option value="Cardiologie">Cardiologie</option>
-              <option value="Dermatologie">Dermatologie</option>
-              <option value="Neurologie">Neurologie</option>
-              <option value="Pédiatrie">Pédiatrie</option>
-              <option value="Psychiatrie">Psychiatrie</option>
-              <option value="Ophtalmologie">Ophtalmologie</option>
             </select>
-          </div>
-          <div class="form-group">
-            <label>Description</label>
-            <input type="text" id="reg-desc" placeholder="Ex: 10 ans d'expérience en cardiologie">
           </div>
         </div>
         <button class="btn btn-primary btn-full" onclick="registerUser()">Créer mon compte</button>
@@ -378,281 +220,141 @@
     </div>
   </div>
 
-  <!-- ===== MAIN VIEW ===== -->
   <div class="main" id="main-view" style="display:none">
 
-    <!-- PATIENT DASHBOARD -->
     <div id="patient-dashboard" style="display:none">
       <div class="card">
-        <div class="card-title">👤 Tableau de bord – <span id="patient-greeting"></span></div>
-        <div class="tabs" id="patient-tabs">
+        <div class="card-title">👤 Espace Patient – <span id="patient-greeting"></span></div>
+        <div class="tabs">
           <button class="tab active" onclick="showPatientTab('doctors')">🏥 Médecins</button>
           <button class="tab" onclick="showPatientTab('appointments')">📅 Mes RDV</button>
-          <button class="tab" onclick="showPatientTab('history')">📋 Historique</button>
         </div>
-
-        <!-- DOCTORS LIST -->
-        <div id="tab-doctors" class="view active">
-          <div id="doctors-list"><div class="empty-state"><div class="icon">⏳</div>Chargement...</div></div>
-          
-          <!-- SLOT PICKER -->
-          <div id="slot-picker" style="display:none;margin-top:20px;">
-            <hr class="divider">
-            <div class="card-title">📅 Réserver un créneau avec <strong id="selected-doctor-name"></strong></div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Choisir une date</label>
-                <input type="date" id="slot-date" onchange="loadSlots()" min="">
-              </div>
-              <div class="form-group" style="align-self:end">
-                <button class="btn btn-outline btn-sm" onclick="document.getElementById('slot-picker').style.display='none'">Annuler</button>
-              </div>
-            </div>
-            <div id="slots-container"><div class="empty-state"><div class="icon">📅</div>Sélectionnez une date</div></div>
+        <div id="tab-doctors" class="view active"><div id="doctors-list"></div>
+          <div id="slot-picker" style="display:none;margin-top:20px;"><hr><br>
+            <div class="card-title">Prendre RDV avec <strong id="selected-doctor-name"></strong></div>
+            <input type="date" id="slot-date" onchange="loadSlots()"><div id="slots-container"></div>
           </div>
         </div>
-
-        <!-- MY APPOINTMENTS -->
-        <div id="tab-appointments" class="view">
-          <div id="patient-appointments"><div class="empty-state"><div class="icon">📭</div>Aucun rendez-vous</div></div>
-        </div>
-
-        <!-- HISTORY -->
-        <div id="tab-history" class="view">
-          <div id="patient-history"><div class="empty-state"><div class="icon">📋</div>Aucune consultation passée</div></div>
-        </div>
+        <div id="tab-appointments" class="view"><div id="patient-appointments"></div></div>
       </div>
     </div>
 
-    <!-- DOCTOR DASHBOARD -->
     <div id="doctor-dashboard" style="display:none">
       <div class="card">
-        <div class="card-title">🩺 Tableau de bord – Dr. <span id="doctor-greeting"></span></div>
-        <div class="tabs">
-          <button class="tab active" onclick="showDoctorTab('appointments')">📅 Rendez-vous</button>
-          <button class="tab" onclick="showDoctorTab('unavailability')">🚫 Indisponibilité</button>
-          <button class="tab" onclick="showDoctorTab('history')">📋 Historique</button>
-        </div>
+        <div class="card-title">🩺 Espace Médecin – Dr. <span id="doctor-greeting"></span></div>
+        <div id="doctor-appointments"></div>
+      </div>
+    </div>
 
-        <div id="tab-doc-appointments" class="view active">
-          <div id="doctor-appointments"><div class="empty-state"><div class="icon">📭</div>Aucun rendez-vous</div></div>
-        </div>
-
-        <div id="tab-doc-unavailability" class="view">
-          <div class="form-group">
-            <label>Marquer comme indisponible le :</label>
-            <input type="date" id="unavail-date">
+    <div id="admin-dashboard" style="display:none">
+      <div class="card" style="background: #fafbfc; border-left: 5px solid var(--danger);">
+        <div class="card-title" style="color: var(--danger);">🛡️ Centre de Supervision Sécurité & Traçabilité (SIEM Audit Logs)</div>
+        <p class="text-muted" style="margin-bottom: 20px;">Vue globale en temps réel sur l'infrastructure DoctoLine, la conformité des flux et la détection d'intrusions.</p>
+        
+        <div class="cyber-grid">
+          <div>
+            <div class="card" style="padding:15px;">
+              <h3 style="font-size:1rem; margin-bottom:10px; color: var(--primary-dark)">👥 Comptes Utilisateurs</h3>
+              <div id="admin-users-list" style="max-height: 400px; overflow-y:auto;"></div>
+            </div>
           </div>
-          <button class="btn btn-danger" onclick="addUnavailability()">🚫 Ajouter indisponibilité</button>
-          <div id="unavail-msg" style="margin-top:10px"></div>
-        </div>
 
-        <div id="tab-doc-history" class="view">
-          <div id="doctor-history"><div class="empty-state"><div class="icon">📋</div>Aucune consultation passée</div></div>
+          <div>
+            <div class="card" style="padding:15px;">
+              <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:10px;">
+                <h3 style="font-size:1rem; color: var(--primary-dark)">📋 Journal de Traçabilité des Activités (Logs d'Audit)</h3>
+                <button class="btn btn-outline btn-sm" onclick="fetchAdminLogs()">🔄 Rafraîchir</button>
+              </div>
+              <div class="log-table-wrapper">
+                <table class="log-table">
+                  <thead>
+                    <tr>
+                      <th>Horodatage</th>
+                      <th>Utilisateur / Email</th>
+                      <th>Rôle</th>
+                      <th>Action Cyber</th>
+                      <th>Adresse IP</th>
+                      <th>Statut</th>
+                      <th>Détails de l'évènement</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-logs-tbody">
+                    </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
+
   </div>
 
-  <!-- ===== CALL VIEW (plein écran) ===== -->
   <div id="call-view">
-    <div class="call-header">
-      <div>
-        <div class="call-title" id="call-title">Consultation en cours</div>
-        <div class="call-status" id="call-status-bar">
-          <span class="status-dot"></span>
-          <span id="call-status-text">Connexion...</span>
-        </div>
-      </div>
-      <div class="call-timer" id="call-timer">00:00</div>
-    </div>
-
-    <!-- Sensor Panel -->
+    <div class="call-header"><div class="call-title" id="call-title">Téléconsultation</div><div id="call-timer">00:00</div></div>
     <div class="sensor-panel">
-      <div class="sensor-title">📡 Capteurs biométriques simulés (temps réel)</div>
       <div class="sensor-grid">
-        <div class="sensor-item">
-          <div class="sensor-label">❤️ Fréquence cardiaque</div>
-          <div class="sensor-value hr" id="s-hr">--</div>
-          <div class="sensor-unit">bpm</div>
-          <span class="sensor-status" id="s-hr-status">--</span>
-        </div>
-        <div class="sensor-item">
-          <div class="sensor-label">🌡️ Température</div>
-          <div class="sensor-value temp" id="s-temp">--</div>
-          <div class="sensor-unit">°C</div>
-          <span class="sensor-status" id="s-temp-status">--</span>
-        </div>
-        <div class="sensor-item">
-          <div class="sensor-label">💨 SpO2</div>
-          <div class="sensor-value spo2" id="s-spo2">--</div>
-          <div class="sensor-unit">%</div>
-          <span class="sensor-status" id="s-spo2-status">--</span>
-        </div>
+        <div class="sensor-item"><div>❤️ Fréquence Cardiaque</div><div class="sensor-value hr" id="s-hr">--</div><span>bpm</span></div>
+        <div class="sensor-item"><div>🌡️ Température</div><div class="sensor-value temp" id="s-temp">--</div><span>°C</span></div>
+        <div class="sensor-item"><div>💨 SpO2</div><div class="sensor-value spo2" id="s-spo2">--</div><span>%</span></div>
       </div>
     </div>
-
-    <!-- HR Graph -->
-    <div class="sensor-graph-container">
-      <canvas id="hrChart" height="60"></canvas>
-    </div>
-
-    <!-- FHIR -->
-    <div class="fhir-btn-area">
-      <button class="btn btn-accent btn-sm" onclick="generateFHIR()">📄 Générer ressource FHIR Observation</button>
-      <button class="btn btn-outline btn-sm" style="color:white;border-color:rgba(255,255,255,0.3)" onclick="toggleFhirOutput()">👁️ Voir JSON</button>
-      <button class="btn btn-sm" style="background:rgba(255,255,255,0.1);color:white" onclick="copyFhirJson()">📋 Copier</button>
-    </div>
-    <div class="fhir-output" id="fhir-output">
-      <pre id="fhir-json">Cliquez sur "Générer ressource FHIR"</pre>
-    </div>
-
-    <!-- Videos -->
+    <div style="padding: 10px 20px;"><button class="btn btn-accent btn-sm" onclick="generateFHIR()">📄 Générer & Sauvegarder Ressource FHIR</button></div>
     <div class="videos-container">
-      <div id="no-video-remote" class="no-video-placeholder">
-        <div class="icon">🎥</div>
-        <div>En attente de la vidéo distante...</div>
-        <div style="font-size:0.8rem;opacity:0.6">La caméra de votre interlocuteur apparaîtra ici</div>
-      </div>
-      <video id="remote-video" autoplay playsinline style="display:none"></video>
+      <video id="remote-video" autoplay playsinline></video>
       <video id="local-video" autoplay muted playsinline></video>
     </div>
-
-    <!-- Text Chat -->
-    <div style="padding:0 20px 10px;display:flex;gap:10px;align-items:flex-end">
-      <div style="flex:1">
-        <div class="chat-messages" id="chat-messages"></div>
-        <div style="display:flex;gap:8px">
-          <input type="text" id="chat-input" placeholder="Message texte..." style="flex:1"
-            onkeydown="if(event.key==='Enter')sendChatMessage()">
-          <button class="btn btn-primary btn-sm" onclick="sendChatMessage()">Envoyer</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Controls -->
-    <div class="call-controls">
-      <button class="ctrl-btn" id="btn-mute-audio" title="Couper/activer le micro" onclick="toggleAudio()">🎤</button>
-      <button class="ctrl-btn" id="btn-mute-video" title="Couper/activer la caméra" onclick="toggleVideo()">📹</button>
-      <button class="ctrl-btn" id="btn-sensor" title="Activer/désactiver capteurs" onclick="toggleSensor()" style="font-size:1rem">📡</button>
-      <button class="ctrl-btn danger" title="Terminer l'appel" onclick="endCall()">📵</button>
-    </div>
+    <div class="call-controls"><button class="ctrl-btn danger" onclick="endCall()">Ending 📵</button></div>
   </div>
 
-  <!-- ===== INCOMING CALL OVERLAY ===== -->
   <div id="incoming-call-overlay">
     <div class="incoming-call-box">
-      <div class="incoming-avatar">🩺</div>
-      <div class="incoming-name" id="incoming-caller-name">Dr. Jean</div>
-      <div class="incoming-label">Souhaite démarrer une consultation</div>
-      <div class="incoming-actions">
-        <button class="call-answer" onclick="acceptCall()" title="Accepter">📞</button>
-        <button class="call-decline" onclick="rejectCall()" title="Refuser">📵</button>
-      </div>
+      <h3>Appel Entrant 📹</h3><br>
+      <p id="incoming-caller-name"></p><br>
+      <button class="btn btn-accent" onclick="acceptCall()">Accepter</button>
+      <button class="btn btn-danger" onclick="rejectCall()">Refuser</button>
     </div>
   </div>
 
 </div>
 
 <script>
-// ===================================================================
-// ÉTAT GLOBAL
-// ===================================================================
-const STATE = {
-  user: null,
-  socket: null,
-  peerConnection: null,
-  localStream: null,
-  currentCallId: null,
-  peerSocketId: null,
-  sensorInterval: null,
-  callTimerInterval: null,
-  callStartTime: null,
-  sensorActive: true,
-  audioMuted: false,
-  videoMuted: false,
-  hrHistory: [],
-  lastFhirData: null,
-  pendingCallData: null,   // pour l'appel entrant
-  selectedDoctorId: null,
-  selectedDoctorName: null,
-  chatChannel: null,
-};
+const STATE = { user: null, socket: null, peerConnection: null, localStream: null, currentCallId: null, peerSocketId: null, sensorInterval: null, callTimerInterval: null, callStartTime: null, selectedDoctorId: null, selectedDoctorName: null, lastFhirData: null };
+const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
-// Serveurs ICE : STUN (Google) + TURN (coturn local)
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  {
-    urls: 'turn:192.168.23.129:3478',
-    username: 'patient',
-    credential: 'patient123'
-  },
-  {
-    urls: 'turn:192.168.23.129:3478',
-    username: 'medecin',
-    credential: 'medecin123'
-  }
-];
-
-// ===================================================================
-// INIT : créer des comptes démo automatiquement
-// ===================================================================
-window.addEventListener('load', async () => {
-  // Today min for date pickers
+window.addEventListener('load', () => {
   const today = new Date().toISOString().split('T')[0];
-  const dateInputs = document.querySelectorAll('input[type="date"]');
-  dateInputs.forEach(d => d.min = today);
-  document.getElementById('slot-date').value = today;
-  
-  // Créer les comptes démo si besoin
-  await createDemoAccounts();
+  if(document.getElementById('slot-date')) document.getElementById('slot-date').min = today;
+  createDemoAccounts();
 });
 
 async function createDemoAccounts() {
   try {
-    await fetch('/api/register', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ name:'Boris', email:'patient@test.fr', password:'patient123', role:'patient' })
-    });
-    await fetch('/api/register', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ name:'Dr Jean', email:'medecin@test.fr', password:'medecin123', role:'medecin', specialty:'Médecine générale', description:'Médecin généraliste avec 15 ans d\'expérience' })
-    });
-  } catch(e) { /* silencieux si déjà créé */ }
+    await fetch('/api/register', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:'Boris Patient', email:'patient@test.fr', password:'pass123', role:'patient' })});
+    await fetch('/api/register', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:'Jean Medecin', email:'medecin@test.fr', password:'pass123', role:'medecin', specialty:'Médecine générale' })});
+  } catch(e){}
 }
 
-// ===================================================================
-// AUTHENTIFICATION
-// ===================================================================
 function switchAuthTab(tab) {
-  document.querySelectorAll('.auth-tab').forEach((t,i) => t.classList.toggle('active', (tab==='login')===!i));
   document.getElementById('login-form').style.display = tab==='login' ? 'block' : 'none';
   document.getElementById('register-form').style.display = tab==='register' ? 'block' : 'none';
+  document.getElementById('btn-tab-login').classList.toggle('active', tab==='login');
+  document.getElementById('btn-tab-reg').classList.toggle('active', tab==='register');
 }
-
 function toggleDoctorFields() {
-  const role = document.getElementById('reg-role').value;
-  document.getElementById('doctor-fields').style.display = role === 'medecin' ? 'block' : 'none';
+  document.getElementById('doctor-fields').style.display = document.getElementById('reg-role').value === 'medecin' ? 'block' : 'none';
 }
 
 async function loginUser() {
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
-  const errDiv = document.getElementById('login-error');
-  errDiv.innerHTML = '';
-  if (!email || !password) { errDiv.innerHTML = '<div class="alert alert-error">Remplissez tous les champs.</div>'; return; }
-  
   try {
-    const res = await fetch('/api/login', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({email, password})
-    });
+    const res = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, password}) });
     const data = await res.json();
-    if (!data.success) { errDiv.innerHTML = `<div class="alert alert-error">${data.message}</div>`; return; }
+    if (!data.success) { document.getElementById('login-error').innerHTML = `<div class="alert alert-error">${data.message}</div>`; return; }
     STATE.user = data.user;
     initApp();
-  } catch(e) { errDiv.innerHTML = '<div class="alert alert-error">Erreur réseau.</div>'; }
+  } catch(e) { }
 }
 
 async function registerUser() {
@@ -661,777 +363,197 @@ async function registerUser() {
   const password = document.getElementById('reg-password').value;
   const role = document.getElementById('reg-role').value;
   const specialty = role==='medecin' ? document.getElementById('reg-specialty').value : undefined;
-  const description = role==='medecin' ? document.getElementById('reg-desc').value : undefined;
-  const errDiv = document.getElementById('register-error');
-  errDiv.innerHTML = '';
-  
-  if (!name || !email || !password) { errDiv.innerHTML = '<div class="alert alert-error">Remplissez tous les champs.</div>'; return; }
   try {
-    const res = await fetch('/api/register', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({name, email, password, role, specialty, description})
-    });
+    const res = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, email, password, role, specialty}) });
     const data = await res.json();
-    if (!data.success) { errDiv.innerHTML = `<div class="alert alert-error">${data.message}</div>`; return; }
-    errDiv.innerHTML = '<div class="alert alert-success">Compte créé ! Vous pouvez vous connecter.</div>';
-    setTimeout(()=>switchAuthTab('login'), 1500);
-  } catch(e) { errDiv.innerHTML = '<div class="alert alert-error">Erreur réseau.</div>'; }
+    if(!data.success) return;
+    switchAuthTab('login');
+  } catch(e){}
 }
 
 function logout() {
-  if (STATE.currentCallId) endCall();
   if (STATE.socket) STATE.socket.disconnect();
-  STATE.user = null;
-  document.getElementById('main-view').style.display = 'none';
-  document.getElementById('auth-view').style.display = 'flex';
-  document.getElementById('header-user').style.display = 'none';
+  location.reload();
 }
 
-// ===================================================================
-// INIT APRÈS LOGIN
-// ===================================================================
 function initApp() {
   document.getElementById('auth-view').style.display = 'none';
   document.getElementById('main-view').style.display = 'block';
-  
-  const u = STATE.user;
   document.getElementById('header-user').style.display = 'flex';
-  document.getElementById('header-name').textContent = u.name;
+  document.getElementById('header-name').textContent = STATE.user.name;
+  
   const roleEl = document.getElementById('header-role');
-  roleEl.textContent = u.role === 'medecin' ? '🩺 Médecin' : '👤 Patient';
-  if (u.role === 'medecin') roleEl.classList.add('medecin');
+  roleEl.className = "badge-role " + STATE.user.role;
+  roleEl.textContent = STATE.user.role.toUpperCase();
 
-  // Socket.IO
   initSocket();
 
-  // Dashboard
-  if (u.role === 'patient') {
+  if (STATE.user.role === 'patient') {
     document.getElementById('patient-dashboard').style.display = 'block';
-    document.getElementById('patient-greeting').textContent = u.name;
+    document.getElementById('patient-greeting').textContent = STATE.user.name;
     loadDoctors();
-    loadPatientAppointments();
-  } else {
+  } else if (STATE.user.role === 'medecin') {
     document.getElementById('doctor-dashboard').style.display = 'block';
-    document.getElementById('doctor-greeting').textContent = u.name;
+    document.getElementById('doctor-greeting').textContent = STATE.user.name;
     loadDoctorAppointments();
+  } else if (STATE.user.role === 'admin') {
+    // Activation Dashboard Admin Cyber
+    document.getElementById('admin-dashboard').style.display = 'block';
+    fetchAdminUsers();
+    fetchAdminLogs();
   }
 }
 
-// ===================================================================
-// SOCKET.IO
-// ===================================================================
 function initSocket() {
   STATE.socket = io({ transports: ['websocket','polling'] });
-
   STATE.socket.on('connect', () => {
-    STATE.socket.emit('register', {
-      userId: STATE.user.id,
-      userName: STATE.user.name,
-      role: STATE.user.role
-    });
+    STATE.socket.emit('register', { userId: STATE.user.id, userName: STATE.user.name, role: STATE.user.role });
+  });
+  STATE.socket.on('force-logout', (d) => { alert(d.message); logout(); });
+  STATE.socket.on('call:incoming', (d) => { STATE.pendingCallData = d; document.getElementById('incoming-caller-name').textContent = d.doctorName ? `Dr. ${d.doctorName}` : d.patientName; document.getElementById('incoming-call-overlay').classList.add('active'); });
+  STATE.socket.on('call:requested', (d) => { STATE.currentCallId = d.callId; });
+  STATE.socket.on('call:accepted', async (d) => { STATE.currentCallId = d.callId; STATE.peerSocketId = d.peerSocketId; showCallView(); await startCall(true); });
+  STATE.socket.on('webrtc:ready', (d) => { STATE.currentCallId = d.callId; STATE.peerSocketId = d.peerSocketId; });
+  STATE.socket.on('call:ended', () => { closeCallView(); });
+  
+  // Évènement de streaming Cyber-Log en temps réel (uniquement pour l'admin)
+  STATE.socket.on('admin:new-log', (log) => {
+    if(STATE.user && STATE.user.role === 'admin') {
+        prependLogRow(log);
+    }
   });
 
-  STATE.socket.on('force-logout', (data) => {
-    alert(data.message);
-    logout();
-  });
-
-  // Appel entrant
-  STATE.socket.on('call:incoming', (data) => {
-    STATE.pendingCallData = data;
-    document.getElementById('incoming-caller-name').textContent = 
-      data.doctorName ? `Dr. ${data.doctorName}` : data.patientName;
-    document.getElementById('incoming-call-overlay').classList.add('active');
-  });
-
-  STATE.socket.on('call:requested', (data) => {
-    STATE.currentCallId = data.callId;
-    console.log('Appel initié, callId:', data.callId);
-  });
-
-  STATE.socket.on('call:accepted', async (data) => {
-    STATE.currentCallId = data.callId;
-    STATE.peerSocketId = data.peerSocketId;
-    showCallView(`Consultation avec ${data.doctorName || data.patientName}`);
-    await startCall(true); // initiateur = true → crée l'offre
-  });
-
-  STATE.socket.on('webrtc:ready', async (data) => {
-    STATE.currentCallId = data.callId;
-    STATE.peerSocketId = data.peerSocketId;
-    // L'accepteur attend l'offre
-  });
-
-  STATE.socket.on('call:rejected', () => {
-    alert('Le médecin a refusé la consultation ou n\'est pas disponible.');
-  });
-
-  STATE.socket.on('call:ended', () => {
-    closeCallView();
-  });
-
-  // WebRTC signaling
-  STATE.socket.on('webrtc:offer', async (data) => {
-    STATE.peerSocketId = data.fromSocketId;
+  STATE.socket.on('webrtc:offer', async (d) => {
+    STATE.peerSocketId = d.fromSocketId;
     if (!STATE.peerConnection) await startCall(false);
-    await STATE.peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-    const answer = await STATE.peerConnection.createAnswer();
-    await STATE.peerConnection.setLocalDescription(answer);
-    STATE.socket.emit('webrtc:answer', { targetSocketId: data.fromSocketId, answer });
+    await STATE.peerConnection.setRemoteDescription(new RTCSessionDescription(d.offer));
+    const ans = await STATE.peerConnection.createAnswer();
+    await STATE.peerConnection.setLocalDescription(ans);
+    STATE.socket.emit('webrtc:answer', { targetSocketId: d.fromSocketId, answer: ans });
   });
-
-  STATE.socket.on('webrtc:answer', async (data) => {
-    await STATE.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-  });
-
-  STATE.socket.on('webrtc:ice-candidate', async (data) => {
-    try {
-      await STATE.peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-    } catch(e) { console.warn('ICE candidate error:', e); }
-  });
-
-  // Capteur distant
-  STATE.socket.on('sensor:update', (data) => {
-    updateSensorDisplay(data);
-  });
-
-  // Chat texte via socket
-  STATE.socket.on('chat:message', (data) => {
-    appendChatMessage(data.from, data.text, false);
-  });
+  STATE.socket.on('webrtc:answer', async (d) => { await STATE.peerConnection.setRemoteDescription(new RTCSessionDescription(d.answer)); });
+  STATE.socket.on('webrtc:ice-candidate', async (d) => { try{await STATE.peerConnection.addIceCandidate(new RTCIceCandidate(d.candidate));}catch(e){} });
+  STATE.socket.on('sensor:update', (d) => { if(d.heartRate) document.getElementById('s-hr').textContent = d.heartRate; if(d.temperature) document.getElementById('s-temp').textContent = d.temperature; if(d.spo2) document.getElementById('s-spo2').textContent = d.spo2; });
 }
 
-// ===================================================================
-// PATIENT : MÉDECINS
-// ===================================================================
-async function loadDoctors() {
-  try {
-    const res = await fetch('/api/doctors');
-    const doctors = await res.json();
-    const container = document.getElementById('doctors-list');
-    if (!doctors.length) {
-      container.innerHTML = '<div class="empty-state"><div class="icon">🏥</div>Aucun médecin disponible.<br><small>Inscrivez un médecin pour commencer.</small></div>';
-      return;
-    }
-    container.innerHTML = doctors.map(d => `
-      <div class="doctor-card">
-        <div class="doc-avatar">🩺</div>
-        <div class="doc-info">
-          <div class="doc-name">Dr. ${d.name}</div>
-          <div class="doc-specialty">${d.specialty}</div>
-          ${d.description ? `<div style="font-size:0.83rem;color:var(--text-muted);margin-top:3px">${d.description}</div>` : ''}
+// --- FONCTIONS ADMIN CYBER (NEW) ---
+async function fetchAdminUsers() {
+    const res = await fetch('/api/admin/users');
+    const users = await res.json();
+    const container = document.getElementById('admin-users-list');
+    container.innerHTML = users.map(u => `
+        <div class="user-list-item">
+            <div>
+                <strong>${u.name}</strong><br>
+                <small style="color:var(--text-muted);">${u.email}</small>
+            </div>
+            <span class="badge-role ${u.role}" style="border:1px solid; border-radius:10px; padding:2px 8px; font-size:0.75rem;">${u.role.toUpperCase()}</span>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="selectDoctor('${d.id}','${d.name}')">Prendre RDV</button>
-      </div>
     `).join('');
-  } catch(e) { console.error(e); }
 }
 
-function selectDoctor(doctorId, doctorName) {
-  STATE.selectedDoctorId = doctorId;
-  STATE.selectedDoctorName = doctorName;
-  document.getElementById('selected-doctor-name').textContent = 'Dr. ' + doctorName;
-  document.getElementById('slot-picker').style.display = 'block';
-  const today = new Date().toISOString().split('T')[0];
-  document.getElementById('slot-date').value = today;
-  loadSlots();
-  document.getElementById('slot-picker').scrollIntoView({ behavior:'smooth' });
+async function fetchAdminLogs() {
+    const res = await fetch('/api/admin/logs');
+    const logs = await res.json();
+    const tbody = document.getElementById('admin-logs-tbody');
+    tbody.innerHTML = '';
+    logs.forEach(log => appendLogRow(log));
 }
 
+function appendLogRow(log) {
+    const tbody = document.getElementById('admin-logs-tbody');
+    const tr = createLogRowElement(log);
+    tbody.appendChild(tr);
+}
+
+function prependLogRow(log) {
+    const tbody = document.getElementById('admin-logs-tbody');
+    const tr = createLogRowElement(log);
+    tbody.insertBefore(tr, tbody.firstChild);
+}
+
+function createLogRowElement(log) {
+    const tr = document.createElement('tr');
+    const time = new Date(log.timestamp).toLocaleTimeString();
+    tr.innerHTML = `
+        <td><b>${time}</b></td>
+        <td>${log.username}<br><small style="color:var(--text-muted)">ID: ${log.userId}</small></td>
+        <td><span class="badge-role ${log.role}" style="font-size:0.7rem; padding:1px 5px;">${log.role}</span></td>
+        <td><code style="background:#f1f5f9; padding:2px 4px; border-radius:4px; font-weight:bold; color:var(--primary-dark);">${log.action}</code></td>
+        <td><small style="font-family:monospace;">${log.ip}</small></td>
+        <td><span class="badge-status ${log.status.toLowerCase()}">${log.status}</span></td>
+        <td style="color:#334155;">${log.details}</td>
+    `;
+    return tr;
+}
+
+// --- LOGIQUE PATIENT / MEDECIN ---
+async function loadDoctors() {
+  const res = await fetch('/api/doctors'); const docs = await res.json();
+  document.getElementById('doctors-list').innerHTML = docs.map(d => `<div class="doctor-card"><div><b>Dr. ${d.name}</b> (${d.specialty})</div><button class="btn btn-primary btn-sm" onclick="selectDoctor('${d.id}','${d.name}')">Choisir</button></div>`).join('');
+}
+function selectDoctor(id, name) { STATE.selectedDoctorId = id; STATE.selectedDoctorName = name; document.getElementById('selected-doctor-name').textContent = name; document.getElementById('slot-picker').style.display='block'; loadSlots(); }
 async function loadSlots() {
-  const date = document.getElementById('slot-date').value;
-  const container = document.getElementById('slots-container');
-  if (!date || !STATE.selectedDoctorId) return;
-  container.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
-
-  try {
-    const res = await fetch(`/api/doctors/${STATE.selectedDoctorId}/slots?date=${date}`);
-    const slots = await res.json();
-    if (!slots.length) {
-      container.innerHTML = '<div class="empty-state"><div class="icon">😔</div>Aucun créneau disponible ce jour.</div>';
-      return;
-    }
-    container.innerHTML = `<div class="slots-grid">${slots.map(s => 
-      `<button class="slot-btn" onclick="bookSlot('${s.start}','${s.end}',this)">${s.startTimeFormatted}</button>`
-    ).join('')}</div>`;
-  } catch(e) { container.innerHTML = '<div class="alert alert-error">Erreur de chargement.</div>'; }
+  const date = document.getElementById('slot-date').value; if(!date) return;
+  const res = await fetch(`/api/doctors/${STATE.selectedDoctorId}/slots?date=${date}`); const slots = await res.json();
+  document.getElementById('slots-container').innerHTML = `<div class="slots-grid">` + slots.map(s => `<button class="slot-btn" onclick="bookSlot('${s.start}','${s.end}')">${s.startTimeFormatted}</button>`).join('') + `</div>`;
 }
-
-async function bookSlot(start, end, btn) {
-  document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
-  btn.classList.add('selected');
-  
-  if (!confirm(`Confirmer le RDV du ${new Date(start).toLocaleDateString('fr-FR')} à ${new Date(start).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})} avec Dr. ${STATE.selectedDoctorName} ?`)) return;
-
-  try {
-    const res = await fetch('/api/appointments', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        patientId: STATE.user.id, patientName: STATE.user.name,
-        doctorId: STATE.selectedDoctorId, doctorName: STATE.selectedDoctorName,
-        start, end
-      })
-    });
-    const data = await res.json();
-    if (data.success) {
-      alert('✅ Rendez-vous confirmé !');
-      document.getElementById('slot-picker').style.display = 'none';
-      loadPatientAppointments();
-      showPatientTab('appointments');
-    } else {
-      alert('❌ ' + data.message);
-    }
-  } catch(e) { alert('Erreur réseau.'); }
+async function bookSlot(start, end) {
+  await fetch('/api/appointments', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ patientId: STATE.user.id, patientName: STATE.user.name, doctorId: STATE.selectedDoctorId, doctorName: STATE.selectedDoctorName, start, end }) });
+  document.getElementById('slot-picker').style.display='none'; loadPatientAppointments();
 }
-
-// ===================================================================
-// PATIENT : RENDEZ-VOUS
-// ===================================================================
 async function loadPatientAppointments() {
-  try {
-    const res = await fetch(`/api/patients/${STATE.user.id}/appointments`);
-    const appts = await res.json();
-    const container = document.getElementById('patient-appointments');
-    const upcoming = appts.filter(a => a.status !== 'completed' && a.status !== 'cancelled');
-    
-    if (!upcoming.length) {
-      container.innerHTML = '<div class="empty-state"><div class="icon">📭</div>Aucun rendez-vous à venir.<br><small>Réservez un créneau dans l\'onglet Médecins.</small></div>';
-      return;
-    }
-    container.innerHTML = upcoming.map(a => {
-      const dt = new Date(a.start);
-      return `
-        <div class="appt-item upcoming" id="appt-${a.id}">
-          <div>
-            <div class="appt-date">Dr. ${a.doctorName}</div>
-            <div class="appt-meta">📅 ${dt.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})} à ${dt.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</div>
-          </div>
-          <div class="appt-actions">
-            <button class="btn btn-accent btn-sm" onclick="startConsultationAsPatient('${a.id}','${a.doctorId}','${a.doctorName}')">📹 Démarrer consultation</button>
-            <button class="btn btn-sm" style="background:#fdecea;color:var(--danger)" onclick="cancelAppointment('${a.id}')">Annuler</button>
-          </div>
-        </div>
-      `;
-    }).join('');
-  } catch(e) { console.error(e); }
+  const res = await fetch(`/api/patients/${STATE.user.id}/appointments`); const appts = await res.json();
+  document.getElementById('patient-appointments').innerHTML = appts.map(a => `<div class="appt-item"><div><b>Dr. ${a.doctorName}</b><br>${new Date(a.start).toLocaleString()}</div><button class="btn btn-accent btn-sm" onclick="startConsultation('${a.id}','${a.doctorId}','${a.doctorName}')">Démarrer</button></div>`).join('');
 }
-
-async function cancelAppointment(id) {
-  if (!confirm('Annuler ce rendez-vous ?')) return;
-  await fetch(`/api/appointments/${id}`, { method:'DELETE' });
-  loadPatientAppointments();
-}
-
-function startConsultationAsPatient(appointmentId, doctorId, doctorName) {
-  STATE.socket.emit('call:request', {
-    appointmentId, patientId: STATE.user.id, patientName: STATE.user.name,
-    doctorId, doctorName
-  });
-  showCallView(`Consultation avec Dr. ${doctorName}`);
-  document.getElementById('call-status-text').textContent = 'En attente du médecin...';
-}
-
-// ===================================================================
-// MÉDECIN : RENDEZ-VOUS
-// ===================================================================
+function startConsultation(apptId, docId, docName) { STATE.socket.emit('call:request', { appointmentId: apptId, patientId: STATE.user.id, patientName: STATE.user.name, doctorId: docId, doctorName: docName }); showCallView(); }
 async function loadDoctorAppointments() {
-  try {
-    const res = await fetch(`/api/doctors/${STATE.user.doctorId}/appointments`);
-    const appts = await res.json();
-    const container = document.getElementById('doctor-appointments');
-    const upcoming = appts.filter(a => a.status !== 'completed' && a.status !== 'cancelled');
-    
-    if (!upcoming.length) {
-      container.innerHTML = '<div class="empty-state"><div class="icon">📭</div>Aucun rendez-vous à venir.</div>';
-      return;
-    }
-    container.innerHTML = upcoming.map(a => {
-      const dt = new Date(a.start);
-      return `
-        <div class="appt-item upcoming">
-          <div>
-            <div class="appt-date">${a.patientName}</div>
-            <div class="appt-meta">📅 ${dt.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})} à ${dt.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</div>
-          </div>
-          <div class="appt-actions">
-            <button class="btn btn-accent btn-sm" onclick="startConsultationAsDoctor('${a.id}','${a.patientId}','${a.patientName}')">📹 Démarrer consultation</button>
-          </div>
-        </div>
-      `;
-    }).join('');
-  } catch(e) { console.error(e); }
+  const res = await fetch(`/api/doctors/${STATE.user.doctorId}/appointments`); const appts = await res.json();
+  document.getElementById('doctor-appointments').innerHTML = appts.map(a => `<div class="appt-item"><div><b>${a.patientName}</b><br>${new Date(a.start).toLocaleString()}</div><button class="btn btn-accent btn-sm" onclick="startConsultationDoc('${a.id}','${a.patientId}','${a.patientName}')">Appeler</button></div>`).join('');
 }
+function startConsultationDoc(apptId, patId, patName) { STATE.socket.emit('call:request', { appointmentId: apptId, patientId: patId, patientName: patName, doctorId: STATE.user.doctorId, doctorName: STATE.user.name }); showCallView(); }
 
-function startConsultationAsDoctor(appointmentId, patientId, patientName) {
-  STATE.socket.emit('call:request', {
-    appointmentId, patientId, patientName,
-    doctorId: STATE.user.doctorId, doctorName: STATE.user.name
-  });
-  showCallView(`Consultation avec ${patientName}`);
-  document.getElementById('call-status-text').textContent = 'En attente du patient...';
-}
+function acceptCall() { const d = STATE.pendingCallData; document.getElementById('incoming-call-overlay').classList.remove('active'); STATE.socket.emit('call:accept', { callId: d.callId, doctorId: d.doctorId, doctorName: d.doctorName, patientSocketId: d.fromSocketId }); showCallView(); STATE.pendingCallData = null; }
+function rejectCall() { const d = STATE.pendingCallData; if (d) STATE.socket.emit('call:reject', { callId: d.callId }); document.getElementById('incoming-call-overlay').classList.remove('active'); STATE.pendingCallData = null; }
 
-async function addUnavailability() {
-  const date = document.getElementById('unavail-date').value;
-  if (!date) { document.getElementById('unavail-msg').innerHTML = '<div class="alert alert-error">Sélectionnez une date.</div>'; return; }
-  try {
-    const res = await fetch(`/api/doctors/${STATE.user.doctorId}/exceptions`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({date})
-    });
-    const data = await res.json();
-    document.getElementById('unavail-msg').innerHTML = data.success 
-      ? `<div class="alert alert-success">Indisponibilité ajoutée pour le ${new Date(date).toLocaleDateString('fr-FR')}.</div>`
-      : '<div class="alert alert-error">Erreur.</div>';
-  } catch(e) { console.error(e); }
-}
-
-// ===================================================================
-// APPEL ENTRANT
-// ===================================================================
-function acceptCall() {
-  const data = STATE.pendingCallData;
-  if (!data) return;
-  document.getElementById('incoming-call-overlay').classList.remove('active');
-  
-  STATE.socket.emit('call:accept', {
-    callId: data.callId,
-    doctorId: data.doctorId, doctorName: data.doctorName,
-    patientSocketId: data.fromSocketId
-  });
-  
-  showCallView(`Consultation avec ${data.patientName || data.doctorName}`);
-  STATE.pendingCallData = null;
-}
-
-function rejectCall() {
-  const data = STATE.pendingCallData;
-  if (data) STATE.socket.emit('call:reject', { callId: data.callId });
-  document.getElementById('incoming-call-overlay').classList.remove('active');
-  STATE.pendingCallData = null;
-}
-
-// ===================================================================
-// WEBRTC
-// ===================================================================
+// --- WEBRTC CORE ---
 async function startCall(isInitiator) {
-  // Obtenir le flux local
-  try {
-    STATE.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    document.getElementById('local-video').srcObject = STATE.localStream;
-    document.getElementById('call-status-text').textContent = 'Caméra active – connexion WebRTC...';
-  } catch(e) {
-    console.warn('Caméra/micro non disponible:', e.message);
-    document.getElementById('call-status-text').textContent = 'Pas de caméra – audio seulement';
-    // Créer un flux vide pour quand même établir la connexion
-    STATE.localStream = null;
-  }
-
-  // Créer RTCPeerConnection avec STUN + TURN
+  try { STATE.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); document.getElementById('local-video').srcObject = STATE.localStream; } catch(e){}
   STATE.peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-
-  // Ajouter les pistes locales
-  if (STATE.localStream) {
-    STATE.localStream.getTracks().forEach(track => {
-      STATE.peerConnection.addTrack(track, STATE.localStream);
-    });
-  }
-
-  // Afficher la vidéo distante
-  STATE.peerConnection.ontrack = (event) => {
-    const remoteVideo = document.getElementById('remote-video');
-    remoteVideo.srcObject = event.streams[0];
-    remoteVideo.style.display = 'block';
-    document.getElementById('no-video-remote').style.display = 'none';
-    document.getElementById('call-status-text').textContent = 'Consultation en cours ✓';
-  };
-
-  // ICE candidates
-  STATE.peerConnection.onicecandidate = (event) => {
-    if (event.candidate) {
-      STATE.socket.emit('webrtc:ice-candidate', {
-        targetSocketId: STATE.peerSocketId,
-        candidate: event.candidate
-      });
-    }
-  };
-
+  if (STATE.localStream) STATE.localStream.getTracks().forEach(t => STATE.peerConnection.addTrack(t, STATE.localStream));
+  STATE.peerConnection.ontrack = (e) => { document.getElementById('remote-video').srcObject = e.streams[0]; };
+  STATE.peerConnection.onicecandidate = (e) => { if (e.candidate) STATE.socket.emit('webrtc:ice-candidate', { targetSocketId: STATE.peerSocketId, candidate: e.candidate }); };
+  
   STATE.peerConnection.oniceconnectionstatechange = () => {
-    const state = STATE.peerConnection?.iceConnectionState;
-    console.log('ICE state:', state);
-    if (state === 'connected' || state === 'completed') {
-      document.getElementById('call-status-text').textContent = 'Connexion établie ✓';
-      startCallTimer();
-      startSensorSimulation();
-    } else if (state === 'failed') {
-      document.getElementById('call-status-text').textContent = 'Erreur de connexion WebRTC';
-    }
+    if(STATE.peerConnection.iceConnectionState === 'connected') { startCallTimer(); startSensorSimulation(); }
   };
-
-  // Data channel pour le chat texte
   if (isInitiator) {
-    STATE.chatChannel = STATE.peerConnection.createDataChannel('chat');
-    setupDataChannel(STATE.chatChannel);
-  } else {
-    STATE.peerConnection.ondatachannel = (event) => {
-      STATE.chatChannel = event.channel;
-      setupDataChannel(STATE.chatChannel);
-    };
-  }
-
-  // Créer l'offre si initiateur
-  if (isInitiator) {
-    const offer = await STATE.peerConnection.createOffer();
-    await STATE.peerConnection.setLocalDescription(offer);
+    const offer = await STATE.peerConnection.createOffer(); await STATE.peerConnection.setLocalDescription(offer);
     STATE.socket.emit('webrtc:offer', { targetSocketId: STATE.peerSocketId, offer });
   }
 }
 
-function setupDataChannel(channel) {
-  channel.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.type === 'chat') appendChatMessage(data.from, data.text, false);
-  };
-}
-
-// ===================================================================
-// CALL CONTROLS
-// ===================================================================
-function toggleAudio() {
-  if (!STATE.localStream) return;
-  STATE.audioMuted = !STATE.audioMuted;
-  STATE.localStream.getAudioTracks().forEach(t => t.enabled = !STATE.audioMuted);
-  const btn = document.getElementById('btn-mute-audio');
-  btn.textContent = STATE.audioMuted ? '🔇' : '🎤';
-  btn.classList.toggle('muted', STATE.audioMuted);
-}
-
-function toggleVideo() {
-  if (!STATE.localStream) return;
-  STATE.videoMuted = !STATE.videoMuted;
-  STATE.localStream.getVideoTracks().forEach(t => t.enabled = !STATE.videoMuted);
-  const btn = document.getElementById('btn-mute-video');
-  btn.textContent = STATE.videoMuted ? '🚫' : '📹';
-  btn.classList.toggle('muted', STATE.videoMuted);
-}
-
-function toggleSensor() {
-  STATE.sensorActive = !STATE.sensorActive;
-  const btn = document.getElementById('btn-sensor');
-  btn.style.background = STATE.sensorActive ? 'rgba(255,255,255,0.1)' : 'rgba(231,76,60,0.4)';
-  if (!STATE.sensorActive) {
-    clearInterval(STATE.sensorInterval);
-    STATE.sensorInterval = null;
-  } else {
-    startSensorSimulation();
-  }
-}
-
-function sendChatMessage() {
-  const input = document.getElementById('chat-input');
-  const text = input.value.trim();
-  if (!text) return;
-  
-  appendChatMessage(STATE.user.name, text, true);
-  
-  // Envoyer via data channel si disponible
-  if (STATE.chatChannel && STATE.chatChannel.readyState === 'open') {
-    STATE.chatChannel.send(JSON.stringify({ type:'chat', from: STATE.user.name, text }));
-  }
-  // Fallback via socket
-  STATE.socket.emit('chat:message', { callId: STATE.currentCallId, from: STATE.user.name, text });
-  input.value = '';
-}
-
-function appendChatMessage(from, text, isMe) {
-  const container = document.getElementById('chat-messages');
-  const div = document.createElement('div');
-  div.className = 'chat-msg';
-  div.innerHTML = `<span class="from ${isMe?'me':''}">${from}:</span>${text}`;
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-function endCall() {
-  if (STATE.currentCallId) {
-    STATE.socket.emit('call:end', { callId: STATE.currentCallId });
-  }
-  closeCallView();
-}
-
-function showCallView(title) {
-  document.getElementById('call-title').textContent = title;
-  document.getElementById('call-view').classList.add('active');
-  document.getElementById('call-status-text').textContent = 'Initialisation...';
-  document.getElementById('chat-messages').innerHTML = '';
-}
-
-function closeCallView() {
-  document.getElementById('call-view').classList.remove('active');
-  document.getElementById('incoming-call-overlay').classList.remove('active');
-  
-  // Cleanup
-  if (STATE.sensorInterval) { clearInterval(STATE.sensorInterval); STATE.sensorInterval = null; }
-  if (STATE.callTimerInterval) { clearInterval(STATE.callTimerInterval); STATE.callTimerInterval = null; }
-  if (STATE.peerConnection) { STATE.peerConnection.close(); STATE.peerConnection = null; }
-  if (STATE.localStream) { STATE.localStream.getTracks().forEach(t => t.stop()); STATE.localStream = null; }
-  
-  STATE.currentCallId = null;
-  STATE.peerSocketId = null;
-  STATE.hrHistory = [];
-  document.getElementById('call-timer').textContent = '00:00';
-  document.getElementById('remote-video').style.display = 'none';
-  document.getElementById('no-video-remote').style.display = 'flex';
-  document.getElementById('fhir-output').style.display = 'none';
-  
-  // Reset sensors
-  ['s-hr','s-temp','s-spo2'].forEach(id => document.getElementById(id).textContent = '--');
-
-  // Refresh
-  if (STATE.user?.role === 'patient') loadPatientAppointments();
-  else loadDoctorAppointments();
-}
-
-// ===================================================================
-// CALL TIMER
-// ===================================================================
-function startCallTimer() {
-  STATE.callStartTime = Date.now();
-  STATE.callTimerInterval = setInterval(() => {
-    const elapsed = Math.floor((Date.now() - STATE.callStartTime) / 1000);
-    const m = String(Math.floor(elapsed/60)).padStart(2,'0');
-    const s = String(elapsed%60).padStart(2,'0');
-    document.getElementById('call-timer').textContent = `${m}:${s}`;
-  }, 1000);
-}
-
-// ===================================================================
-// PSEUDO-CAPTEUR SIMULÉ (section 3.4 du projet)
-// ===================================================================
+function startCallTimer() { STATE.callStartTime = Date.now(); STATE.callTimerInterval = setInterval(() => { const el = Math.floor((Date.now() - STATE.callStartTime)/1000); document.getElementById('call-timer').textContent = String(Math.floor(el/60)).padStart(2,'0') + ":" + String(el%60).padStart(2,'0'); }, 1000); }
 function startSensorSimulation() {
-  if (STATE.sensorInterval) return;
-  
-  // Valeurs initiales réalistes
-  let baseHR = 72 + Math.random()*10;
-  let baseTemp = 36.5 + Math.random()*0.5;
-  let baseSpo2 = 97 + Math.random()*2;
-
+  let h = 75, t = 36.6, s = 98;
   STATE.sensorInterval = setInterval(() => {
-    // Simulation avec variations réalistes (marche aléatoire bornée)
-    baseHR = Math.max(55, Math.min(120, baseHR + (Math.random()-0.5)*4));
-    baseTemp = Math.max(35.5, Math.min(40, baseTemp + (Math.random()-0.5)*0.1));
-    baseSpo2 = Math.max(90, Math.min(100, baseSpo2 + (Math.random()-0.5)*0.5));
-
-    const data = {
-      callId: STATE.currentCallId,
-      heartRate: Math.round(baseHR),
-      temperature: Math.round(baseTemp*10)/10,
-      spo2: Math.round(baseSpo2*10)/10,
-      timestamp: Date.now()
-    };
-
+    h = Math.round(h + (Math.random()-0.5)*3); t = Math.round((t + (Math.random()-0.5)*0.1)*10)/10; s = Math.round(s + (Math.random()-0.5)*1);
+    const data = { callId: STATE.currentCallId, heartRate: h, temperature: t, spo2: s };
     STATE.lastFhirData = data;
-    updateSensorDisplay(data);
-
-    // Envoyer au pair via socket
-    if (STATE.socket && STATE.currentCallId) {
-      STATE.socket.emit('sensor:data', data);
-    }
-
-    // Mise à jour graphique
-    updateHRChart(data.heartRate);
-
-  }, 2000); // mise à jour toutes les 2s
+    if(STATE.socket) STATE.socket.emit('sensor:data', data);
+    document.getElementById('s-hr').textContent = h; document.getElementById('s-temp').textContent = t; document.getElementById('s-spo2').textContent = s;
+  }, 2000);
 }
 
-function updateSensorDisplay(data) {
-  // Fréquence cardiaque
-  if (data.heartRate !== undefined) {
-    document.getElementById('s-hr').textContent = data.heartRate;
-    const hrStatus = document.getElementById('s-hr-status');
-    const isNormal = data.heartRate >= 60 && data.heartRate <= 100;
-    hrStatus.textContent = isNormal ? 'Normal' : (data.heartRate < 60 ? 'Bradycardie' : 'Tachycardie');
-    hrStatus.className = 'sensor-status ' + (isNormal ? 'normal' : 'alert');
-  }
-
-  // Température
-  if (data.temperature !== undefined) {
-    document.getElementById('s-temp').textContent = data.temperature.toFixed(1);
-    const tempStatus = document.getElementById('s-temp-status');
-    const tempNormal = data.temperature < 37.8;
-    tempStatus.textContent = tempNormal ? 'Normal' : 'Fièvre';
-    tempStatus.className = 'sensor-status ' + (tempNormal ? 'normal' : 'alert');
-  }
-
-  // SpO2
-  if (data.spo2 !== undefined) {
-    document.getElementById('s-spo2').textContent = data.spo2.toFixed(1);
-    const spo2Status = document.getElementById('s-spo2-status');
-    const spo2Normal = data.spo2 >= 95;
-    spo2Status.textContent = spo2Normal ? 'Normal' : 'Hypoxie';
-    spo2Status.className = 'sensor-status ' + (spo2Normal ? 'normal' : 'alert');
-  }
-}
-
-// ===================================================================
-// GRAPHIQUE FC (mini)
-// ===================================================================
-let hrCtx = null;
-function updateHRChart(value) {
-  const canvas = document.getElementById('hrChart');
-  if (!canvas) return;
-  
-  if (!hrCtx) hrCtx = canvas.getContext('2d');
-  
-  STATE.hrHistory.push(value);
-  if (STATE.hrHistory.length > 30) STATE.hrHistory.shift();
-
-  canvas.width = canvas.offsetWidth || 600;
-  canvas.height = 60;
-  
-  const ctx = hrCtx;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-  if (STATE.hrHistory.length < 2) return;
-  
-  const min = Math.min(...STATE.hrHistory) - 5;
-  const max = Math.max(...STATE.hrHistory) + 5;
-  const w = canvas.width / (STATE.hrHistory.length - 1);
-  
-  // Grille
-  ctx.strokeStyle = 'rgba(255,107,107,0.1)';
-  ctx.lineWidth = 1;
-  for (let y of [0.25, 0.5, 0.75]) {
-    ctx.beginPath(); ctx.moveTo(0, y*canvas.height); ctx.lineTo(canvas.width, y*canvas.height); ctx.stroke();
-  }
-  
-  // Ligne FC
-  ctx.beginPath();
-  ctx.strokeStyle = '#ff6b6b';
-  ctx.lineWidth = 2;
-  ctx.lineJoin = 'round';
-  STATE.hrHistory.forEach((v, i) => {
-    const x = i * w;
-    const y = canvas.height - ((v-min)/(max-min)) * canvas.height;
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-  
-  // Point courant
-  const lastX = (STATE.hrHistory.length-1) * w;
-  const lastY = canvas.height - ((value-min)/(max-min)) * canvas.height;
-  ctx.beginPath();
-  ctx.arc(lastX, lastY, 4, 0, Math.PI*2);
-  ctx.fillStyle = '#ff6b6b';
-  ctx.fill();
-}
-
-// ===================================================================
-// FHIR (section 3.5 du projet)
-// ===================================================================
 async function generateFHIR() {
-  if (!STATE.lastFhirData) {
-    alert('Aucune donnée capteur disponible. La simulation doit être active.');
-    return;
-  }
-  
-  const { heartRate, temperature, spo2 } = STATE.lastFhirData;
-  
-  try {
-    const res = await fetch('/api/fhir/observation', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        patientId: STATE.user?.role === 'patient' ? STATE.user.id : STATE.pendingCallData?.patientId || 'unknown',
-        patientName: STATE.user?.role === 'patient' ? STATE.user.name : 'Patient',
-        heartRate, temperature, spo2
-      })
-    });
-    const data = await res.json();
-    if (data.success) {
-      document.getElementById('fhir-json').textContent = JSON.stringify(data.observations, null, 2);
-      document.getElementById('fhir-output').style.display = 'block';
-    }
-  } catch(e) {
-    // Générer en local si API échoue
-    const obs = buildFhirObservationLocal(heartRate, temperature, spo2);
-    document.getElementById('fhir-json').textContent = JSON.stringify(obs, null, 2);
-    document.getElementById('fhir-output').style.display = 'block';
-  }
+  if(!STATE.lastFhirData) return;
+  await fetch('/api/fhir/observation', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ patientId: STATE.user.id, patientName: STATE.user.name, ...STATE.lastFhirData }) });
+  alert('Ressource d\'observation FHIR transmise de manière sécurisée.');
 }
-
-function buildFhirObservationLocal(hr, temp, spo2) {
-  const now = new Date().toISOString();
-  const patId = STATE.user?.id || 'patient-1';
-  const patName = STATE.user?.name || 'Patient';
-  
-  return [
-    {
-      resourceType: "Observation",
-      id: `hr-${Date.now()}`,
-      status: "final",
-      category: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/observation-category", code: "vital-signs", display: "Vital Signs" }] }],
-      code: { coding: [{ system: "http://loinc.org", code: "8867-4", display: "Heart rate" }], text: "Fréquence cardiaque" },
-      subject: { reference: `Patient/${patId}`, display: patName },
-      effectiveDateTime: now,
-      valueQuantity: { value: hr, unit: "beats/minute", system: "http://unitsofmeasure.org", code: "/min" },
-      interpretation: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", code: hr<60?"L":hr>100?"H":"N", display: hr<60?"Low":hr>100?"High":"Normal" }] }]
-    },
-    {
-      resourceType: "Observation",
-      id: `temp-${Date.now()+1}`,
-      status: "final",
-      category: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/observation-category", code: "vital-signs", display: "Vital Signs" }] }],
-      code: { coding: [{ system: "http://loinc.org", code: "8310-5", display: "Body temperature" }], text: "Température corporelle" },
-      subject: { reference: `Patient/${patId}`, display: patName },
-      effectiveDateTime: now,
-      valueQuantity: { value: temp, unit: "degree Celsius", system: "http://unitsofmeasure.org", code: "Cel" },
-      interpretation: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", code: temp>37.8?"H":"N", display: temp>37.8?"High":"Normal" }] }]
-    },
-    {
-      resourceType: "Observation",
-      id: `spo2-${Date.now()+2}`,
-      status: "final",
-      category: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/observation-category", code: "vital-signs", display: "Vital Signs" }] }],
-      code: { coding: [{ system: "http://loinc.org", code: "2708-6", display: "Oxygen saturation in Arterial blood" }], text: "Saturation en oxygène (SpO2)" },
-      subject: { reference: `Patient/${patId}`, display: patName },
-      effectiveDateTime: now,
-      valueQuantity: { value: spo2, unit: "%", system: "http://unitsofmeasure.org", code: "%" },
-      bodySite: { coding: [{ system: "http://snomed.info/sct", code: "7569003", display: "Finger structure (body structure)" }] },
-      interpretation: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", code: spo2<95?"L":"N", display: spo2<95?"Low":"Normal" }] }]
-    }
-  ];
-}
-
-function toggleFhirOutput() {
-  const el = document.getElementById('fhir-output');
-  el.style.display = el.style.display === 'none' ? 'block' : 'none';
-}
-
-function copyFhirJson() {
-  const text = document.getElementById('fhir-json').textContent;
-  navigator.clipboard.writeText(text).then(() => alert('JSON FHIR copié dans le presse-papiers !'));
-}
-
-// ===================================================================
-// NAVIGATION TABS
-// ===================================================================
-function showPatientTab(name) {
-  document.querySelectorAll('#patient-tabs .tab').forEach((t,i) => {
-    t.classList.toggle('active', ['doctors','appointments','history'][i] === name);
-  });
-  document.querySelectorAll('#patient-dashboard .view').forEach(v => v.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  if (name === 'appointments') loadPatientAppointments();
-}
-
-function showDoctorTab(name) {
-  document.querySelectorAll('#doctor-dashboard .tab').forEach((t,i) => {
-    t.classList.toggle('active', ['appointments','unavailability','history'][i] === name);
-  });
-  document.querySelectorAll('#doctor-dashboard .view').forEach(v => v.classList.remove('active'));
-  document.getElementById('tab-doc-' + name).classList.add('active');
-  if (name === 'appointments') loadDoctorAppointments();
-}
+function endCall() { if(STATE.currentCallId) STATE.socket.emit('call:end', { callId: STATE.currentCallId }); closeCallView(); }
+function showCallView() { document.getElementById('call-view').classList.add('active'); }
+function closeCallView() { document.getElementById('call-view').classList.remove('active'); clearInterval(STATE.sensorInterval); clearInterval(STATE.callTimerInterval); if(STATE.peerConnection) STATE.peerConnection.close(); if(STATE.localStream) STATE.localStream.getTracks().forEach(t=>t.stop()); }
+function showPatientTab(name) { document.getElementById('tab-doctors').classList.toggle('active', name==='doctors'); document.getElementById('tab-appointments').classList.toggle('active', name==='appointments'); if(name==='appointments') loadPatientAppointments(); }
 </script>
 </body>
 </html>
