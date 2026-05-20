@@ -8,14 +8,19 @@ const os = require('os');
 const app = express();
 const PORT = 3443;
 
-// ---------- Certificats SSL ----------
-const SSL_KEY_PATH = '/home/iut/certs/192.168.23.129-key.pem';
-const SSL_CERT_PATH = '/home/iut/certs/192.168.23.129.pem';
+// ---------- Gestion des Certificats SSL ----------
+let SSL_KEY_PATH = '/home/iut/certs/192.168.23.129-key.pem';
+let SSL_CERT_PATH = '/home/iut/certs/192.168.23.129.pem';
+
+// Fallback si on change de machine ou de dossier pendant la démo
+if (!fs.existsSync(SSL_KEY_PATH) || !fs.existsSync(SSL_CERT_PATH)) {
+    SSL_KEY_PATH = path.join(__dirname, 'certs', 'key.pem');
+    SSL_CERT_PATH = path.join(__dirname, 'certs', 'cert.pem');
+}
 
 if (!fs.existsSync(SSL_KEY_PATH) || !fs.existsSync(SSL_CERT_PATH)) {
-    console.error('❌ Certificats SSL introuvables. Générez-les avec :');
-    console.error('  mkcert -install');
-    console.error('  cd ~/certs && mkcert 192.168.23.129');
+    console.error('❌ Certificats SSL introuvables. Mode sécurisé impossible.');
+    console.error('Assurez-vous d\'avoir vos certificats valides pour l\'adresse IP de la VM.');
     process.exit(1);
 }
 
@@ -37,7 +42,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const users = [];
 const doctors = [];
 const appointments = [];
-const consultationHistory = [];  // historique des consultations terminées
+const consultationHistory = [];  
 const activeSessions = new Map();
 
 // ---------- Routes API ----------
@@ -178,17 +183,14 @@ app.post('/api/appointments', (req, res) => {
     res.json({ success: true, appointment: newAppointment });
 });
 
-// RDV PATIENT
 app.get('/api/patients/:patientId/appointments', (req, res) => {
     res.json(appointments.filter(a => a.patientId === req.params.patientId));
 });
 
-// RDV MÉDECIN
 app.get('/api/doctors/:doctorId/appointments', (req, res) => {
     res.json(appointments.filter(a => a.doctorId === req.params.doctorId));
 });
 
-// ANNULER RDV
 app.delete('/api/appointments/:appointmentId', (req, res) => {
     const idx = appointments.findIndex(a => a.id === req.params.appointmentId);
     if (idx === -1) return res.status(404).json({ success: false });
@@ -196,7 +198,6 @@ app.delete('/api/appointments/:appointmentId', (req, res) => {
     res.json({ success: true });
 });
 
-// EXCEPTION (indisponibilité)
 app.post('/api/doctors/:doctorId/exceptions', (req, res) => {
     const { doctorId } = req.params;
     const { date } = req.body;
@@ -208,20 +209,10 @@ app.post('/api/doctors/:doctorId/exceptions', (req, res) => {
     res.json({ success: true });
 });
 
-// HISTORIQUE CONSULTATIONS
-app.get('/api/patients/:patientId/history', (req, res) => {
-    res.json(consultationHistory.filter(h => h.patientId === req.params.patientId));
-});
-
-app.get('/api/doctors/:doctorId/history', (req, res) => {
-    res.json(consultationHistory.filter(h => h.doctorId === req.params.doctorId));
-});
-
-// ENDPOINT FHIR Observation (pour la démonstration)
+// ENPOINT FHIR OBSERVATION (Conforme HL7 FHIR r4)
 app.post('/api/fhir/observation', (req, res) => {
     const { patientId, patientName, heartRate, temperature, spo2 } = req.body;
     const now = new Date().toISOString();
-    
     const observations = [];
 
     if (heartRate !== undefined) {
@@ -230,38 +221,15 @@ app.post('/api/fhir/observation', (req, res) => {
             id: `hr-${Date.now()}`,
             status: "final",
             category: [{
-                coding: [{
-                    system: "http://terminology.hl7.org/CodeSystem/observation-category",
-                    code: "vital-signs",
-                    display: "Vital Signs"
-                }]
+                coding: [{ system: "http://terminology.hl7.org/CodeSystem/observation-category", code: "vital-signs", display: "Vital Signs" }]
             }],
             code: {
-                coding: [{
-                    system: "http://loinc.org",
-                    code: "8867-4",
-                    display: "Heart rate"
-                }],
+                coding: [{ system: "http://loinc.org", code: "8867-4", display: "Heart rate" }],
                 text: "Fréquence cardiaque"
             },
-            subject: {
-                reference: `Patient/${patientId}`,
-                display: patientName
-            },
+            subject: { reference: `Patient/${patientId}`, display: patientName },
             effectiveDateTime: now,
-            valueQuantity: {
-                value: heartRate,
-                unit: "beats/minute",
-                system: "http://unitsofmeasure.org",
-                code: "/min"
-            },
-            interpretation: [{
-                coding: [{
-                    system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
-                    code: heartRate < 60 ? "L" : heartRate > 100 ? "H" : "N",
-                    display: heartRate < 60 ? "Low" : heartRate > 100 ? "High" : "Normal"
-                }]
-            }]
+            valueQuantity: { value: heartRate, unit: "beats/minute", system: "http://unitsofmeasure.org", code: "/min" }
         });
     }
 
@@ -271,38 +239,15 @@ app.post('/api/fhir/observation', (req, res) => {
             id: `temp-${Date.now()}`,
             status: "final",
             category: [{
-                coding: [{
-                    system: "http://terminology.hl7.org/CodeSystem/observation-category",
-                    code: "vital-signs",
-                    display: "Vital Signs"
-                }]
+                coding: [{ system: "http://terminology.hl7.org/CodeSystem/observation-category", code: "vital-signs", display: "Vital Signs" }]
             }],
             code: {
-                coding: [{
-                    system: "http://loinc.org",
-                    code: "8310-5",
-                    display: "Body temperature"
-                }],
+                coding: [{ system: "http://loinc.org", code: "8310-5", display: "Body temperature" }],
                 text: "Température corporelle"
             },
-            subject: {
-                reference: `Patient/${patientId}`,
-                display: patientName
-            },
+            subject: { reference: `Patient/${patientId}`, display: patientName },
             effectiveDateTime: now,
-            valueQuantity: {
-                value: temperature,
-                unit: "degree Celsius",
-                system: "http://unitsofmeasure.org",
-                code: "Cel"
-            },
-            interpretation: [{
-                coding: [{
-                    system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
-                    code: temperature > 37.8 ? "H" : "N",
-                    display: temperature > 37.8 ? "High" : "Normal"
-                }]
-            }]
+            valueQuantity: { value: temperature, unit: "degree Celsius", system: "http://unitsofmeasure.org", code: "Cel" }
         });
     }
 
@@ -312,56 +257,26 @@ app.post('/api/fhir/observation', (req, res) => {
             id: `spo2-${Date.now()}`,
             status: "final",
             category: [{
-                coding: [{
-                    system: "http://terminology.hl7.org/CodeSystem/observation-category",
-                    code: "vital-signs",
-                    display: "Vital Signs"
-                }]
+                coding: [{ system: "http://terminology.hl7.org/CodeSystem/observation-category", code: "vital-signs", display: "Vital Signs" }]
             }],
             code: {
-                coding: [{
-                    system: "http://loinc.org",
-                    code: "2708-6",
-                    display: "Oxygen saturation in Arterial blood"
-                }],
+                coding: [{ system: "http://loinc.org", code: "2708-6", display: "Oxygen saturation in Arterial blood" }],
                 text: "Saturation en oxygène (SpO2)"
             },
-            subject: {
-                reference: `Patient/${patientId}`,
-                display: patientName
-            },
+            subject: { reference: `Patient/${patientId}`, display: patientName },
             effectiveDateTime: now,
-            valueQuantity: {
-                value: spo2,
-                unit: "%",
-                system: "http://unitsofmeasure.org",
-                code: "%"
-            },
-            bodySite: {
-                coding: [{
-                    system: "http://snomed.info/sct",
-                    code: "7569003",
-                    display: "Finger structure"
-                }]
-            },
-            interpretation: [{
-                coding: [{
-                    system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
-                    code: spo2 < 95 ? "L" : "N",
-                    display: spo2 < 95 ? "Low" : "Normal"
-                }]
-            }]
+            valueQuantity: { value: spo2, unit: "%", system: "http://unitsofmeasure.org", code: "%" }
         });
     }
 
     res.json({ success: true, observations });
 });
 
-// ---------- WebSocket (signalisation WebRTC) ----------
+// ---------- Signalisation WebRTC via Socket.io ----------
 const activeCalls = new Map();
 
 io.on('connection', (socket) => {
-    console.log('🟢 Nouveau client:', socket.id);
+    console.log('🟢 Nouveau client connecté:', socket.id);
 
     socket.on('register', (data) => {
         socket.userId = data.userId;
@@ -369,21 +284,17 @@ io.on('connection', (socket) => {
         socket.userRole = data.role;
         activeSessions.set(data.userId, socket.id);
         socket.join(`user-${data.userId}`);
-        console.log(`✅ ${data.userName} (${data.role}) enregistré`);
     });
 
-    // APPEL - Initiation par le médecin
     socket.on('call:request', (data) => {
         const { appointmentId, patientId, patientName, doctorId, doctorName } = data;
-        const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+        const callId = `call_${Date.now()}`;
         activeCalls.set(callId, {
             callId, appointmentId, patientId, patientName, doctorId, doctorName,
             initiatorSocketId: socket.id,
-            initiatorRole: socket.userRole,
             status: 'waiting',
             startTime: null
         });
-        // Notifier le destinataire
         const targetId = socket.userRole === 'medecin' ? patientId : doctorId;
         io.to(`user-${targetId}`).emit('call:incoming', {
             callId, appointmentId, patientId, patientName, doctorId, doctorName,
@@ -393,63 +304,41 @@ io.on('connection', (socket) => {
     });
 
     socket.on('call:accept', (data) => {
-        const { callId, doctorId, doctorName, patientSocketId } = data;
+        const { callId } = data;
         const call = activeCalls.get(callId);
         if (call && call.status === 'waiting') {
             call.status = 'accepted';
             call.acceptorSocketId = socket.id;
             call.startTime = new Date();
             
-            // Notifier l'initiateur
-            io.to(call.initiatorSocketId).emit('call:accepted', {
-                callId, doctorId, doctorName, peerSocketId: socket.id
-            });
-            // Notifier l'accepteur
-            socket.emit('webrtc:ready', {
-                callId,
-                patientId: call.patientId,
-                patientName: call.patientName,
-                peerSocketId: call.initiatorSocketId
-            });
+            io.to(call.initiatorSocketId).emit('call:accepted', { callId, peerSocketId: socket.id });
+            socket.emit('webrtc:ready', { callId, peerSocketId: call.initiatorSocketId });
         }
     });
 
     socket.on('call:reject', (data) => {
-        const { callId } = data;
-        const call = activeCalls.get(callId);
+        const call = activeCalls.get(data.callId);
         if (call) {
-            io.to(call.initiatorSocketId).emit('call:rejected', { callId });
-            activeCalls.delete(callId);
+            io.to(call.initiatorSocketId).emit('call:rejected', { callId: data.callId });
+            activeCalls.delete(data.callId);
         }
     });
 
-    // Signalisation WebRTC
     socket.on('webrtc:offer', (data) => {
         io.to(data.targetSocketId).emit('webrtc:offer', { offer: data.offer, fromSocketId: socket.id });
     });
+
     socket.on('webrtc:answer', (data) => {
         io.to(data.targetSocketId).emit('webrtc:answer', { answer: data.answer, fromSocketId: socket.id });
     });
+
     socket.on('webrtc:ice-candidate', (data) => {
         io.to(data.targetSocketId).emit('webrtc:ice-candidate', { candidate: data.candidate, fromSocketId: socket.id });
     });
 
-    // Fin d'appel
     socket.on('call:end', (data) => {
         const call = activeCalls.get(data.callId);
         if (call) {
-            // Sauvegarder dans l'historique
-            consultationHistory.push({
-                id: call.callId,
-                patientId: call.patientId,
-                patientName: call.patientName,
-                doctorId: call.doctorId,
-                doctorName: call.doctorName,
-                startTime: call.startTime,
-                endTime: new Date(),
-                appointmentId: call.appointmentId
-            });
-            // Mettre à jour le statut du RDV
             const appt = appointments.find(a => a.id === call.appointmentId);
             if (appt) appt.status = 'completed';
 
@@ -459,29 +348,16 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Transfert des données capteur via socket (en temps réel vers le médecin)
     socket.on('sensor:data', (data) => {
-        const { callId, heartRate, temperature, spo2 } = data;
-        const call = activeCalls.get(callId);
+        const call = activeCalls.get(data.callId);
         if (call) {
-            // Envoyer les données aux deux participants
-            if (call.initiatorSocketId) io.to(call.initiatorSocketId).emit('sensor:update', data);
-            if (call.acceptorSocketId) io.to(call.acceptorSocketId).emit('sensor:update', data);
+            const target = socket.id === call.initiatorSocketId ? call.acceptorSocketId : call.initiatorSocketId;
+            if (target) io.to(target).emit('sensor:update', data);
         }
     });
 
     socket.on('disconnect', () => {
-        console.log('🔴 Déconnecté', socket.id);
         if (socket.userId) activeSessions.delete(socket.userId);
-        for (const [callId, call] of activeCalls.entries()) {
-            if (call.initiatorSocketId === socket.id || call.acceptorSocketId === socket.id) {
-                const otherSocketId = call.initiatorSocketId === socket.id 
-                    ? call.acceptorSocketId 
-                    : call.initiatorSocketId;
-                if (otherSocketId) io.to(otherSocketId).emit('call:ended');
-                activeCalls.delete(callId);
-            }
-        }
     });
 });
 
@@ -497,6 +373,5 @@ function getLocalIp() {
 
 server.listen(PORT, '0.0.0.0', () => {
     const ip = getLocalIp();
-    console.log(`\n🔒 Serveur HTTPS démarré sur https://${ip}:${PORT}`);
-    console.log(`📅 Calendrier, RDV, WebRTC avec TURN, FHIR actifs.\n`);
+    console.log(`\n🔒 Serveur HTTPS DoctoLine démarré sur : https://${ip}:${PORT}`);
 });
