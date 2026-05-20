@@ -87,8 +87,7 @@
     };
 
     let currentUser = null, socket = null;
-    let localStream = null;
-    let localPeerConnection = null, remotePeerConnection = null; 
+    let localStream = null, peerConnection = null; 
     let activeCallId = null, targetSocketId = null;
     let sensorInterval = null;
     let selectedDoctorId = null, selectedDoctorName = null;
@@ -158,27 +157,62 @@
         socket.on('call:incoming', (data) => {
             if (currentUser.role !== 'medecin') return;
             if (confirm(`Appel de ${data.patientName} ?`)) {
-                socket.emit('call:accept', { callId: data.callId, doctorId: currentUser.doctorId, doctorName: currentUser.name, patientSocketId: data.fromSocketId });
+                activeCallId = data.callId;
+                targetSocketId = data.fromSocketId;
+                socket.emit('call:accept', { callId: data.callId, doctorId: currentUser.doctorId, doctorName: currentUser.name });
             }
         });
         
         socket.on('call:accepted', async (data) => {
             activeCallId = data.callId;
             targetSocketId = data.doctorSocketId;
-            await startCall();
+            await setupConsultationUI();
+            await setupWebRTC(true); // Le patient initie l'Offer
         });
         
         socket.on('webrtc:ready', async (data) => {
             activeCallId = data.callId;
             targetSocketId = data.patientSocketId;
-            await startCall();
+            await setupConsultationUI();
+            await setupWebRTC(false); // Le médecin attend l'Offer
+        });
+
+        socket.on('webrtc:offer', async (data) => {
+            if (!peerConnection) await setupWebRTC(false);
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('webrtc:answer', { targetSocketId: data.fromSocketId, answer });
+        });
+
+        socket.on('webrtc:answer', async (data) => {
+            if (peerConnection) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            }
+        });
+
+        socket.on('webrtc:ice-candidate', async (data) => {
+            if (peerConnection) {
+                try {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                } catch(e) {}
+            }
         });
 
         socket.on('chat:message', (data) => {
             appendChatMessage(data.msg);
         });
 
-        // Temps réel Admin : réception directe des nouvelles actions
+        socket.on('sensor:data', (data) => {
+            if (currentUser.role === 'medecin') {
+                const heartDiv = document.getElementById('heartRate');
+                if (heartDiv) heartDiv.innerText = `${data.fhir.valueQuantity.value} BPM`;
+                drawChart(data.fhir.valueQuantity.value);
+                const fhirDiv = document.getElementById('fhirJson');
+                if (fhirDiv) fhirDiv.innerHTML = `<pre>${JSON.stringify(data.fhir, null, 2)}</pre>`;
+            }
+        });
+
         socket.on('admin:new-log', (log) => {
             const tableBody = document.getElementById('auditLogsBody');
             if(tableBody) {
@@ -190,101 +224,91 @@
         socket.on('call:ended', () => cleanCallUI());
     }
 
-    // CORRECTION CRITIQUE DU BUG : Rendu asynchrone sécurisé du conteneur vidéo
-    async function startCall() {
+    // --- STRUCTURE DE L'INTERFACE DE TÉLÉCONSULTATION ---
+    async function setupConsultationUI() {
+        let container = document.getElementById('consultationArea');
+        if (!container) {
+            const dash = document.getElementById('dashboardContent');
+            if (dash) {
+                const div = document.createElement('div');
+                div.id = 'consultationArea';
+                dash.appendChild(div);
+                container = div;
+            }
+        }
+        container.innerHTML = `
+            <div class="video-container" style="margin-bottom:20px;">
+                <div><h3>Flux Local (Moi)</h3><video id="localVideo" autoplay muted playsinline style="max-width:300px"></video></div>
+                <div><h3>Flux Distant</h3><video id="remoteVideo" autoplay playsinline style="max-width:300px"></video></div>
+            </div>
+            <div class="card" style="border: 1px solid #ccc;">
+                <h3>💬 Messagerie de consultation</h3>
+                <div id="chatBox" class="chat-box"></div>
+                <div class="flex">
+                    <input type="text" id="chatInput" placeholder="Écrire un message..." style="flex:1; padding:8px; border-radius:10px; border:1px solid #ccc;">
+                    <button id="sendChatBtn" class="btn-success">Envoyer</button>
+                </div>
+            </div>
+            <div style="text-align:center; margin:16px 0;"><button class="btn-danger" id="hangupBtn">Terminer la consultation</button></div>
+            <div class="flex">
+                <div class="sensor-card" style="flex:1; min-width:280px;">
+                    <h3>📊 Télésurveillance (Simulation FHIR)</h3>
+                    <div id="heartRate" style="font-size:2.5rem; font-weight:bold; color:#e63946; margin-bottom:10px;">-- BPM</div>
+                    <div id="fhirJson" class="fhir-box"></div>
+                </div>
+                <div class="sensor-card" style="flex:1; min-width:280px; text-align:center;">
+                    <h3>📈 Graphique Analyse Dynamique</h3>
+                    <canvas id="bpmChart" width="300" height="150" style="background:white; border-radius:16px; max-width:100%;"></canvas>
+                </div>
+            </div>
+        `;
+        await new Promise(resolve => setTimeout(resolve, 60));
+        
+        document.getElementById('hangupBtn').onclick = () => endCall();
+        document.getElementById('sendChatBtn').onclick = () => {
+            const input = document.getElementById('chatInput');
+            if(!input.value) return;
+            const msg = { from: currentUser.name, text: input.value };
+            socket.emit('chat:message', { targetSocketId, msg });
+            appendChatMessage(msg);
+            input.value = '';
+        };
+    }
+
+    // ---------- MÉTHODE RÉSEAU INTER-NAVIGATEUR (SÉCURISÉE) ----------
+    async function setupWebRTC(isInitiator) {
+        peerConnection = new RTCPeerConnection(ICE_CONFIG);
+
+        // Réception du flux distant
+        peerConnection.ontrack = e => {
+            const remoteVideo = document.getElementById('remoteVideo');
+            if (remoteVideo) remoteVideo.srcObject = e.streams[0];
+        };
+
+        // Envoi des ICE Candidates découverts via la signalisation Socket.io
+        peerConnection.onicecandidate = e => {
+            if (e.candidate) {
+                socket.emit('webrtc:ice-candidate', { targetSocketId, candidate: e.candidate });
+            }
+        };
+
+        // Tentative d'accès à la caméra avec bloc try/catch de sécurité pour le multi-onglet
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-
-            let container = document.getElementById('consultationArea');
-            if (!container) {
-                const dash = document.getElementById('dashboardContent');
-                if (dash) {
-                    const div = document.createElement('div');
-                    div.id = 'consultationArea';
-                    dash.appendChild(div);
-                    container = div;
-                } else throw new Error("dashboardContent introuvable");
-            }
-
-            // 1. On injecte l'HTML d'abord
-            container.innerHTML = `
-                <div class="video-container" style="margin-bottom:20px;">
-                    <div><h3>Flux Local (Vous)</h3><video id="localVideo" autoplay muted playsinline style="max-width:300px"></video></div>
-                    <div><h3>Flux Distant (Correspondant)</h3><video id="remoteVideo" autoplay playsinline style="max-width:300px"></video></div>
-                </div>
-                <div class="card" style="border: 1px solid #ccc;">
-                    <h3>💬 Messagerie de consultation</h3>
-                    <div id="chatBox" class="chat-box"></div>
-                    <div class="flex">
-                        <input type="text" id="chatInput" placeholder="Écrire un message..." style="flex:1; padding:8px; border-radius:10px; border:1px solid #ccc;">
-                        <button id="sendChatBtn" class="btn-success">Envoyer</button>
-                    </div>
-                </div>
-                <div style="text-align:center; margin:16px 0;"><button class="btn-danger" id="hangupBtn">Terminer la consultation</button></div>
-                <div class="flex">
-                    <div class="sensor-card" style="flex:1; min-width:280px;">
-                        <h3>📊 Télésurveillance (Simulation)</h3>
-                        <div id="heartRate" style="font-size:2.5rem; font-weight:bold; color:#e63946; margin-bottom:10px;">-- BPM</div>
-                        <div id="fhirJson" class="fhir-box"></div>
-                    </div>
-                    <div class="sensor-card" style="flex:1; min-width:280px; text-align:center;">
-                        <h3>📈 Graphique Rythme Cardiaque</h3>
-                        <canvas id="bpmChart" width="300" height="150" style="background:white; border-radius:16px; max-width:100%;"></canvas>
-                    </div>
-                </div>
-            `;
-            
-            // 2. On attend une micro-seconde (Tick) que le DOM s'actualise pour éviter le bug de srcObject sur élément null
-            await new Promise(resolve => setTimeout(resolve, 50));
-
             const localVideo = document.getElementById('localVideo');
-            const remoteVideo = document.getElementById('remoteVideo');
+            if (localVideo) localVideo.srcObject = localStream;
             
-            if (!localVideo || !remoteVideo) {
-                throw new Error("Les éléments vidéo n'ont pas pu être initialisés dans le DOM.");
-            }
-
-            localVideo.srcObject = localStream;
-
-            localPeerConnection = new RTCPeerConnection(ICE_CONFIG);
-            remotePeerConnection = new RTCPeerConnection(ICE_CONFIG);
-
-            localPeerConnection.onicecandidate = e => {
-                if (e.candidate && remotePeerConnection) remotePeerConnection.addIceCandidate(e.candidate).catch(err => {});
-            };
-            remotePeerConnection.onicecandidate = e => {
-                if (e.candidate && localPeerConnection) localPeerConnection.addIceCandidate(e.candidate).catch(err => {});
-            };
-
-            remotePeerConnection.ontrack = e => {
-                if (remoteVideo) remoteVideo.srcObject = e.streams[0];
-            };
-
-            localStream.getTracks().forEach(track => localPeerConnection.addTrack(track, localStream));
-
-            const offer = await localPeerConnection.createOffer();
-            await localPeerConnection.setLocalDescription(offer);
-            await remotePeerConnection.setRemoteDescription(offer);
-
-            const answer = await remotePeerConnection.createAnswer();
-            await remotePeerConnection.setLocalDescription(answer);
-            await localPeerConnection.setRemoteDescription(answer);
-
-            document.getElementById('hangupBtn').onclick = () => endCall();
-            document.getElementById('sendChatBtn').onclick = () => {
-                const input = document.getElementById('chatInput');
-                if(!input.value) return;
-                const msg = { from: currentUser.name, text: input.value };
-                socket.emit('chat:message', { targetSocketId, msg });
-                appendChatMessage(msg);
-                input.value = '';
-            };
-
-            startSensorSimulation();
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
         } catch (err) {
-            console.error(err);
-            alert("Erreur critique WebRTC : " + err.message);
-            cleanCallUI();
+            console.warn("⚠️ Caméra indisponible ou déjà accaparée sur cette machine (mode simulation multi-onglet actif).");
+        }
+
+        // Si l'onglet est l'initiateur (Patient), il crée et transmet l'Offer SDP
+        if (isInitiator) {
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.emit('webrtc:offer', { targetSocketId, offer });
+            startSensorSimulation(); // Le patient commence à émettre ses constantes cliniques
         }
     }
 
@@ -320,14 +344,14 @@
     }
 
     async function endCall() {
-        if(activeCallId && currentUser) {
+        if(currentUser.role === 'patient') {
             await fetch('/api/history', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     patientName: currentUser.name,
                     date: new Date().toLocaleString(),
-                    avgBpm: bpmHistory.length ? Math.round(bpmHistory.reduce((a,b)=>a+b, 0) / bpmHistory.length) : 75
+                    avgBpm: bpmHistory.length ? Math.round(bpmHistory.reduce((a,b)=>a+b, 0) / bpmHistory.length) : 72
                 })
             });
         }
@@ -341,13 +365,9 @@
             localStream.getTracks().forEach(t => t.stop());
             localStream = null;
         }
-        if (localPeerConnection) {
-            localPeerConnection.close();
-            localPeerConnection = null;
-        }
-        if (remotePeerConnection) {
-            remotePeerConnection.close();
-            remotePeerConnection = null;
+        if (peerConnection) {
+            peerConnection.close();
+            peerConnection = null;
         }
     }
 
@@ -361,13 +381,15 @@
         else if (currentUser.role === 'patient') loadPatientDashboard();
     }
 
+    // Le patient simule son capteur et envoie l'objet FHIR structuré au médecin par Socket.IO
     function startSensorSimulation() {
+        if (currentUser.role !== 'patient') return;
         if (sensorInterval) clearInterval(sensorInterval);
         sensorInterval = setInterval(() => {
             const bpm = Math.floor(Math.random() * 41) + 60;
+            
             const heartDiv = document.getElementById('heartRate');
             if (heartDiv) heartDiv.innerText = `${bpm} BPM`;
-            
             drawChart(bpm);
 
             const fhir = {
@@ -381,8 +403,13 @@
                 subject: { reference: `Patient/${currentUser.id}` },
                 effectiveDateTime: new Date().toISOString()
             };
+            
             const fhirDiv = document.getElementById('fhirJson');
             if (fhirDiv) fhirDiv.innerHTML = `<pre>${JSON.stringify(fhir, null, 2)}</pre>`;
+            
+            if (targetSocketId) {
+                socket.emit('sensor:data', { targetSocketId, fhir });
+            }
         }, 3000);
     }
 
@@ -410,7 +437,6 @@
         `;
         refreshAdminUsers();
         
-        // charger les logs existants
         const resLogs = await fetch('/api/admin/logs');
         const logs = await resLogs.json();
         const tableBody = document.getElementById('auditLogsBody');

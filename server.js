@@ -8,6 +8,7 @@ const os = require('os');
 const app = express();
 const PORT = 3443;
 
+// --- Chemins SSL (À adapter à votre VM) ---
 const SSL_KEY_PATH = '/home/iut/certs/192.168.23.129-key.pem';
 const SSL_CERT_PATH = '/home/iut/certs/192.168.23.129.pem';
 
@@ -25,15 +26,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- Base de données mémoire ----------
 const users = [
-    // Compte admin pré-enregistré exigé
     { id: "admin_root", name: "Administrateur", email: "admin@doctoline.fr", password: "invite", role: "admin" }
 ];
 const doctors = [];
 const appointments = [];
 const consultationHistory = [];
-const auditLogs = []; // Stockage des actions "qui a fait quoi à quelle heure"
+const auditLogs = [];
 
-// Fonction utilitaire pour enregistrer un log d'audit
 function logAction(actor, action) {
     const logEntry = {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
@@ -42,10 +41,10 @@ function logAction(actor, action) {
         action: action
     };
     auditLogs.push(logEntry);
-    io.emit('admin:new-log', logEntry); // Envoie le log en temps réel à l'admin connecté
+    io.emit('admin:new-log', logEntry);
 }
 
-// ---------- API ----------
+// ---------- API REST ----------
 app.post('/api/register', (req, res) => {
     const { name, email, password, role, specialty } = req.body;
     if (users.find(u => u.email === email))
@@ -74,25 +73,20 @@ app.post('/api/login', (req, res) => {
     res.json({ success: true, user: { id: user.id, name: user.name, role: user.role, doctorId } });
 });
 
-// Admin : récupérer tous les utilisateurs
 app.get('/api/admin/users', (req, res) => {
     res.json(users.filter(u => u.role !== 'admin'));
 });
 
-// Admin : récupérer tous les logs d'audit
 app.get('/api/admin/logs', (req, res) => {
     res.json(auditLogs);
 });
 
-// Admin : supprimer un utilisateur
 app.delete('/api/admin/users/:id', (req, res) => {
     const userId = req.params.id;
     const userIdx = users.findIndex(u => u.id === userId);
     if (userIdx !== -1) {
         const userName = users[userIdx].name;
         users.splice(userIdx, 1);
-        
-        // Nettoyer aussi si c'est un médecin
         const docIdx = doctors.findIndex(d => d.userId === userId);
         if (docIdx !== -1) doctors.splice(docIdx, 1);
         
@@ -157,7 +151,7 @@ app.get('/api/doctors/:doctorId/appointments', (req, res) => {
 app.delete('/api/appointments/:appointmentId', (req, res) => {
     const idx = appointments.findIndex(a => a.id === req.params.appointmentId);
     if (idx !== -1) {
-        logAction("Système/Patient", `Annulation du rendez-vous ID: ${req.params.appointmentId}`);
+        logAction("Système", `Annulation du rendez-vous ID: ${req.params.appointmentId}`);
         appointments.splice(idx, 1);
     }
     res.json({ success: true });
@@ -173,7 +167,7 @@ app.get('/api/history', (req, res) => {
     res.json(consultationHistory);
 });
 
-// ---------- WebSocket ----------
+// ---------- SIGNALISATION WEBSOCKET (MULTI-NAVIGATEUR) ----------
 const activeCalls = new Map();
 
 io.on('connection', (socket) => {
@@ -186,8 +180,10 @@ io.on('connection', (socket) => {
 
     socket.on('call:request', (data) => {
         const { appointmentId, patientId, patientName, doctorId, doctorName } = data;
-        const callId = `call_${Date.now()}`;
+        const callId = `call_${appointmentId}`;
         activeCalls.set(callId, { callId, appointmentId, patientId, patientName, doctorId, doctorName, patientSocketId: socket.id, status: 'waiting' });
+        
+        // Transmettre l'appel à la room du médecin
         io.to(`user-${doctorId}`).emit('call:incoming', { callId, patientId, patientName, doctorId, doctorName, fromSocketId: socket.id });
         socket.emit('call:requested', { callId });
     });
@@ -198,11 +194,15 @@ io.on('connection', (socket) => {
         if (call && call.status === 'waiting') {
             call.status = 'accepted';
             call.doctorSocketId = socket.id;
+            
+            // Informer le patient que le médecin a accepté
             io.to(call.patientSocketId).emit('call:accepted', { callId, doctorId, doctorName, doctorSocketId: socket.id });
+            // Informer le médecin que l'infrastructure WebRTC est prête à émettre l'Offer
             socket.emit('webrtc:ready', { callId, patientId: call.patientId, patientName: call.patientName, patientSocketId: call.patientSocketId });
         }
     });
 
+    // Relais des paquets de négociation SDP et ICE Candidates entre les deux navigateurs
     socket.on('webrtc:offer', (data) => {
         io.to(data.targetSocketId).emit('webrtc:offer', { offer: data.offer, fromSocketId: socket.id });
     });
@@ -216,6 +216,10 @@ io.on('connection', (socket) => {
     socket.on('chat:message', (data) => {
         io.to(data.targetSocketId).emit('chat:message', { msg: data.msg });
     });
+    
+    socket.on('sensor:data', (data) => {
+        io.to(data.targetSocketId).emit('sensor:data', { fhir: data.fhir });
+    });
 
     socket.on('call:end', (data) => {
         const call = activeCalls.get(data.callId);
@@ -223,6 +227,16 @@ io.on('connection', (socket) => {
             if (call.patientSocketId) io.to(call.patientSocketId).emit('call:ended');
             if (call.doctorSocketId) io.to(call.doctorSocketId).emit('call:ended');
             activeCalls.delete(data.callId);
+        }
+    });
+    
+    socket.on('disconnect', () => {
+        for (let [callId, call] of activeCalls.entries()) {
+            if (call.patientSocketId === socket.id || call.doctorSocketId === socket.id) {
+                if (call.patientSocketId) io.to(call.patientSocketId).emit('call:ended');
+                if (call.doctorSocketId) io.to(call.doctorSocketId).emit('call:ended');
+                activeCalls.delete(callId);
+            }
         }
     });
 });
