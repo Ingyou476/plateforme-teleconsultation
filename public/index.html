@@ -15,6 +15,7 @@
     --accent2: #f5a623;
     --danger: #e74c3c;
     --success: #27ae60;
+    --cyber-dark: #0f172a;
     --bg: #f0f4f8;
     --card: #ffffff;
     --text: #1a2a3a;
@@ -24,229 +25,273 @@
     --radius: 14px;
     --font: 'Segoe UI', system-ui, sans-serif;
   }
-  
-  /* Bloquer le défilement de la page principale pour le mode Single-Page */
-  html, body, #app { 
-    height: 100vh; 
-    max-height: 100vh; 
-    overflow: hidden; 
-    font-family: var(--font); 
-    background: var(--bg); 
-    color: var(--text); 
-    display: flex; 
-    flex-direction: column; 
-  }
   * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
 
   /* ===== LAYOUT ===== */
+  #app { display: flex; flex-direction: column; min-height: 100vh; }
   .header {
     background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 60%, var(--primary-light) 100%);
     color: white; padding: 0 24px;
     display: flex; align-items: center; justify-content: space-between;
-    height: 54px; min-height: 54px; box-shadow: 0 2px 16px rgba(10,92,127,0.25);
-    z-index: 100;
+    height: 64px; box-shadow: 0 2px 16px rgba(10,92,127,0.25);
+    position: sticky; top: 0; z-index: 100;
   }
-  .header-logo { display: flex; align-items: center; gap: 10px; font-size: 1.2rem; font-weight: 700; }
-  .header-user { display: flex; align-items: center; gap: 14px; font-size: 0.9rem; }
+  .header-logo { display: flex; align-items: center; gap: 10px; font-size: 1.4rem; font-weight: 700; letter-spacing: -0.5px; }
+  .header-logo .logo-icon { font-size: 1.8rem; }
+  .header-user { display: flex; align-items: center; gap: 14px; font-size: 0.95rem; }
   .badge-role {
     background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.35);
-    border-radius: 20px; padding: 2px 10px; font-size: 0.8rem; font-weight: 600;
+    border-radius: 20px; padding: 3px 12px; font-size: 0.82rem; font-weight: 600;
   }
   .badge-role.medecin { background: rgba(0,201,167,0.3); border-color: var(--accent); }
   .badge-role.admin { background: rgba(231, 76, 60, 0.2); border-color: var(--danger); color: #ff6b6b; }
 
-  .main { flex: 1; padding: 16px; height: calc(100vh - 54px); overflow: hidden; }
+  .main { flex: 1; padding: 28px 24px; max-width: 1100px; margin: 0 auto; width: 100%; }
 
-  /* ===== CARDS & PANELS ===== */
+  /* ===== CARDS ===== */
   .card {
     background: var(--card); border-radius: var(--radius);
-    box-shadow: var(--shadow); padding: 16px; border: 1px solid var(--border);
-    display: flex; flex-direction: column; height: 100%; overflow: hidden;
+    box-shadow: var(--shadow); padding: 24px; margin-bottom: 20px;
+    border: 1px solid var(--border);
   }
   .card-title {
     font-size: 1.1rem; font-weight: 700; color: var(--primary-dark);
-    display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
-    padding-bottom: 8px; border-bottom: 2px solid var(--bg);
+    display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+    padding-bottom: 12px; border-bottom: 2px solid var(--bg);
   }
 
-  /* ===== CONSOLE MULTI-PANELS ADMIN (FIT TO SCREEN) ===== */
-  .cyber-grid { 
-    display: grid; 
-    grid-template-columns: 320px 1fr; 
-    gap: 16px; 
-    height: 100%; 
-    overflow: hidden; 
+  /* ===== FORMS ===== */
+  .form-group { margin-bottom: 16px; }
+  label { display: block; font-size: 0.88rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  input, select, textarea {
+    width: 100%; padding: 11px 14px; border: 1.5px solid var(--border);
+    border-radius: 8px; font-size: 0.97rem; font-family: var(--font);
+    color: var(--text); background: white; transition: border-color 0.2s;
   }
-  .sub-panel {
-    display: flex; flex-direction: column; height: 100%; overflow: hidden;
-    background: white; border-radius: 8px; border: 1px solid var(--border);
-  }
-  .panel-header-title {
-    padding: 12px; background: #f8fafc; border-bottom: 1px solid var(--border);
-    font-weight: 700; color: var(--primary-dark); font-size: 0.95rem;
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  .scrollable-content { flex: 1; overflow-y: auto; padding: 12px; }
+  input:focus, select:focus { outline: none; border-color: var(--primary-light); box-shadow: 0 0 0 3px rgba(26,138,181,0.12); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
-  /* ===== TABLES LOGS ===== */
-  .log-table-wrapper { height: 100%; overflow: auto; }
-  .log-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.8rem; }
-  .log-table th { background: var(--primary-dark); color: white; padding: 8px; font-weight: 600; position: sticky; top:0; z-index: 5; }
-  .log-table td { padding: 8px; border-bottom: 1px solid var(--border); background: #fff; }
-  .log-table tr:nth-child(even) td { background: var(--bg); }
-  .badge-status { padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 0.7rem; }
-  .badge-status.success { background: #d4edda; color: #155724; }
-  .badge-status.failed { background: #f8d7da; color: #721c24; }
-  .user-list-item { padding: 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
-
-  /* ===== FORMS & BUTTONS ===== */
-  .form-group { margin-bottom: 12px; }
-  label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; }
-  input, select { width: 100%; padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 6px; font-size: 0.9rem; }
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 6px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
-  .btn-primary { background: var(--primary); color: white; }
+  /* ===== BUTTONS ===== */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 22px; border: none; border-radius: 9px;
+    font-size: 0.95rem; font-weight: 600; cursor: pointer;
+    transition: all 0.18s; text-decoration: none;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; }
+  .btn-accent { background: linear-gradient(135deg, var(--accent), #00a88d); color: white; }
   .btn-danger { background: var(--danger); color: white; }
-  .btn-outline { background: white; color: var(--primary); border: 1.5px solid var(--primary); }
+  .btn-outline { background: white; color: var(--primary); border: 2px solid var(--primary); }
+  .btn-sm { padding: 7px 14px; font-size: 0.87rem; border-radius: 7px; }
   .btn-full { width: 100%; justify-content: center; }
 
-  /* ===== VIEWS VISIBILITY ===== */
-  .view { display: none; }
-  .view.active { display: flex; flex-direction: column; height: 100%; }
+  /* ===== TABS ===== */
+  .tabs { display: flex; gap: 6px; margin-bottom: 24px; }
+  .tab {
+    padding: 9px 20px; border-radius: 8px; border: none; background: var(--bg);
+    color: var(--text-muted); font-weight: 600; cursor: pointer; font-size: 0.92rem;
+    transition: all 0.2s; border: 1.5px solid transparent;
+  }
+  .tab.active { background: white; color: var(--primary); border-color: var(--primary-light); box-shadow: var(--shadow); }
 
-  #auth-view { display: flex; align-items: center; justify-content: center; height: 100%; }
-  .auth-container { width: 100%; max-width: 400px; }
-  
-  /* ===== CALL PANEL ===== */
+  /* ===== VIEWS ===== */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ===== LOGIN / REGISTER ===== */
+  #auth-view { display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 64px); padding: 20px; }
+  .auth-container { width: 100%; max-width: 440px; }
+  .auth-hero {
+    text-align: center; margin-bottom: 24px;
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+    color: white; border-radius: var(--radius); padding: 32px 24px;
+  }
+  .auth-tabs { display: flex; border-radius: 10px; overflow: hidden; border: 1.5px solid var(--border); margin-bottom: 20px; }
+  .auth-tab { flex: 1; padding: 11px; text-align: center; border: none; background: var(--bg); color: var(--text-muted); font-weight: 600; cursor: pointer; }
+  .auth-tab.active { background: var(--primary); color: white; }
+
+  /* ===== DOCTOR CARD / APPOINTMENTS ===== */
+  .doctor-card, .appt-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px; border: 1.5px solid var(--border);
+    border-radius: 10px; margin-bottom: 12px; background: var(--bg);
+  }
+  .doc-avatar { width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent)); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
+  .doc-info { flex: 1; margin-left: 15px; }
+  .doc-name { font-weight: 700; color: var(--primary-dark); }
+  .slots-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; margin-top: 14px; }
+  .slot-btn { padding: 10px 8px; border-radius: 8px; border: 1.5px solid var(--primary-light); background: white; text-align: center; cursor: pointer; font-weight: 600; }
+  .slot-btn.selected { background: var(--primary); color: white; }
+
+  /* ===== CYBER & LOGS TABLE ===== */
+  .cyber-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+  .log-table-wrapper { width: 100%; overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid var(--border); }
+  .log-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+  .log-table th { background: var(--primary-dark); color: white; padding: 10px; font-weight: 600; }
+  .log-table td { padding: 10px; border-bottom: 1px solid var(--border); background: #fff; }
+  .log-table tr:nth-child(even) td { background: var(--bg); }
+  .badge-status { padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 0.75rem; }
+  .badge-status.success { background: #d4edda; color: #155724; }
+  .badge-status.failed { background: #f8d7da; color: #721c24; }
+  .user-list-item { padding: 10px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+
+  /* ===== CALL UI & SENSORS ===== */
   #call-view { position: fixed; inset: 0; background: #0a1520; z-index: 1000; display: none; flex-direction: column; }
   #call-view.active { display: flex; }
-  .call-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; background: rgba(255,255,255,0.05); color: white; }
-  .sensor-panel { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 12px; margin: 12px 24px; border: 1px solid rgba(255,255,255,0.1); }
+  .call-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: rgba(255,255,255,0.05); color: white; }
+  .sensor-panel { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 16px; margin: 20px; border: 1px solid rgba(255,255,255,0.1); }
   .sensor-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  .sensor-item { text-align: center; background: rgba(255,255,255,0.06); border-radius: 8px; padding: 10px; color: white; }
-  .sensor-value { font-size: 1.3rem; font-weight: 700; }
+  .sensor-item { text-align: center; background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px; color: white; }
+  .sensor-value { font-size: 1.5rem; font-weight: 700; }
   .sensor-value.hr { color: #ff6b6b; }
   .sensor-value.temp { color: #ffd93d; }
   .sensor-value.spo2 { color: #6bceff; }
-  .videos-container { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; padding: 12px; }
-  #remote-video { width: 100%; max-width: 500px; background: #0d1f2d; border-radius: 12px; }
-  #local-video { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 80px; border-radius: 6px; object-fit: cover; border: 2px solid var(--accent); }
-  
-  .alert { padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 0.85rem; }
+  .videos-container { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; padding: 20px; }
+  #remote-video { width: 100%; max-width: 640px; background: #0d1f2d; border-radius: 16px; object-fit: cover; }
+  #local-video { position: absolute; bottom: 30px; right: 30px; width: 150px; height: 100px; border-radius: 10px; object-fit: cover; border: 2px solid var(--accent); }
+  .call-controls { display: flex; justify-content: center; gap: 16px; padding: 20px; background: rgba(255,255,255,0.04); }
+  .ctrl-btn { width: 50px; height: 50px; border-radius: 50%; border: none; cursor: pointer; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.1); color: white; }
+  .ctrl-btn.danger { background: var(--danger); }
+  #incoming-call-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 2000; display: none; align-items: center; justify-content: center; }
+  #incoming-call-overlay.active { display: flex; }
+  .incoming-call-box { background: var(--primary-dark); color: white; border-radius: 20px; padding: 32px; text-align: center; width: 300px; }
+  .alert { padding: 12px; border-radius: 8px; margin-bottom: 14px; font-size: 0.9rem; }
   .alert-error { background: #fdecea; color: var(--danger); }
+  .alert-success { background: #eafaf1; color: var(--success); }
+  .empty-state { text-align: center; padding: 30px; color: var(--text-muted); }
 </style>
 </head>
 <body>
 <div id="app">
 
   <header class="header">
-    <div class="header-logo">🩺 <span>DoctoLine Console Securisee</span></div>
+    <div class="header-logo"><span class="logo-icon">🩺</span><span>DoctoLine Securise</span></div>
     <div class="header-user" id="header-user" style="display:none">
       <span id="header-name"></span>
       <span class="badge-role" id="header-role"></span>
-      <button class="btn btn-outline" style="padding: 4px 10px; font-size: 0.8rem;" onclick="logout()">Déconnexion</button>
+      <button class="btn btn-outline btn-sm" onclick="logout()">Déconnexion</button>
     </div>
   </header>
 
   <div id="auth-view">
     <div class="auth-container">
-      <div class="card" style="height: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
-        <h2 style="text-align:center; color: var(--primary-dark); margin-bottom: 16px;">Authentification</h2>
+      <div class="auth-hero"><h1>🩺 DoctoLine</h1><p>Téléconsultation & Cybersécurité (Audit Trail)</p></div>
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="btn-tab-login" onclick="switchAuthTab('login')">Connexion</button>
+        <button class="auth-tab" id="btn-tab-reg" onclick="switchAuthTab('register')">Inscription</button>
+      </div>
+      <div class="card" id="login-form">
         <div id="login-error"></div>
-        
-        <div id="login-step-1">
-          <div class="form-group"><label>Email</label><input type="email" id="login-email" placeholder="votre@email.com"></div>
-          <div class="form-group"><label>Mot de passe</label><input type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')loginUser()"></div>
-          <button class="btn btn-primary btn-full" onclick="loginUser()">Se connecter</button>
-          <div class="auth-tabs" style="margin-top: 15px; display:flex; gap: 10px;">
-            <button class="btn btn-outline btn-full" style="font-size: 0.8rem;" onclick="document.getElementById('login-email').value='patient@test.fr';document.getElementById('login-password').value='pass123';">Patient démo</button>
-            <button class="btn btn-outline btn-full" style="font-size: 0.8rem;" onclick="document.getElementById('login-email').value='admin@cyber.fr';document.getElementById('login-password').value='admincyberpass';">Admin démo</button>
+        <div class="form-group"><label>Email</label><input type="email" id="login-email" placeholder="votre@email.com"></div>
+        <div class="form-group"><label>Mot de passe</label><input type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')loginUser()"></div>
+        <button class="btn btn-primary btn-full" onclick="loginUser()">Se connecter</button>
+        <p class="text-muted" style="text-align:center;margin-top:14px; font-size: 0.8rem;">
+          Démos: <b>patient@test.fr</b> | <b>medecin@test.fr</b> (pass123)<br>
+          Cyber Admin: <span style="color:var(--danger)"><b>admin@cyber.fr</b> / <b>admincyberpass</b></span>
+        </p>
+      </div>
+      <div class="card" id="register-form" style="display:none">
+        <div id="register-error"></div>
+        <div class="form-row">
+          <div class="form-group"><label>Nom complet</label><input type="text" id="reg-name" placeholder="Jean Dupont"></div>
+          <div class="form-group"><label>Email</label><input type="email" id="reg-email" placeholder="vous@email.com"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Mot de passe</label><input type="password" id="reg-password" placeholder="••••••••"></div>
+          <div class="form-group"><label>Rôle</label>
+            <select id="reg-role" onchange="toggleDoctorFields()">
+              <option value="patient">Patient</option>
+              <option value="medecin">Médecin</option>
+            </select>
           </div>
         </div>
-
-        <div id="login-step-2" style="display: none;">
-          <div style="background: #fff3cd; color: #856404; font-size: 0.8rem; padding: 8px; border-radius: 6px; margin-bottom: 12px; font-weight: 600;">
-            🛡️ Compte à privilèges détecté. Veuillez répondre aux questions de sécurité (2FA).
+        <div id="doctor-fields" style="display:none">
+          <div class="form-group"><label>Spécialité</label>
+            <select id="reg-specialty">
+              <option value="Médecine générale">Médecine générale</option>
+              <option value="Cardiologie">Cardiologie</option>
+            </select>
           </div>
-          <div class="form-group"><label style="color:var(--danger)">1. Quoi?</label><input type="text" id="2fa-answer-1" placeholder="Réponse 1"></div>
-          <div class="form-group"><label style="color:var(--danger)">2. how?</label><input type="text" id="2fa-answer-2" placeholder="Réponse 2"></div>
-          <div class="form-group"><label style="color:var(--danger)">3. what?</label><input type="text" id="2fa-answer-3" placeholder="Réponse 3"></div>
-          <button class="btn btn-danger btn-full" onclick="submitAdmin2FA()">Valider les jetons de sécurité</button>
         </div>
-
+        <button class="btn btn-primary btn-full" onclick="registerUser()">Créer mon compte</button>
       </div>
     </div>
   </div>
 
   <div class="main" id="main-view" style="display:none">
 
-    <div id="patient-dashboard" class="view">
+    <div id="patient-dashboard" style="display:none">
       <div class="card">
         <div class="card-title">👤 Espace Patient – <span id="patient-greeting"></span></div>
-        <div style="display: flex; gap: 20px; flex: 1; overflow: hidden;">
-          <div style="flex: 1; overflow-y: auto; padding-right:10px;"><div id="doctors-list"></div></div>
-          <div style="flex: 1; border-left: 1px solid var(--border); padding-left: 20px; display: flex; flex-direction: column;">
-            <h4>Vos rendez-vous de consultation</h4><br>
-            <div id="patient-appointments" style="flex:1; overflow-y:auto;"></div>
-            <div id="slot-picker" style="display:none; margin-top:10px; background:#f8fafc; padding:12px; border-radius:8px;">
-              <h5>Créneaux pour : <span id="selected-doctor-name"></span></h5>
-              <input type="date" id="slot-date" style="margin: 8px 0;" onchange="loadSlots()">
-              <div id="slots-container"></div>
-            </div>
+        <div class="tabs">
+          <button class="tab active" onclick="showPatientTab('doctors')">🏥 Médecins</button>
+          <button class="tab" onclick="showPatientTab('appointments')">📅 Mes RDV</button>
+        </div>
+        <div id="tab-doctors" class="view active"><div id="doctors-list"></div>
+          <div id="slot-picker" style="display:none;margin-top:20px;"><hr><br>
+            <div class="card-title">Prendre RDV avec <strong id="selected-doctor-name"></strong></div>
+            <input type="date" id="slot-date" onchange="loadSlots()"><div id="slots-container"></div>
           </div>
         </div>
+        <div id="tab-appointments" class="view"><div id="patient-appointments"></div></div>
       </div>
     </div>
 
-    <div id="doctor-dashboard" class="view">
+    <div id="doctor-dashboard" style="display:none">
       <div class="card">
         <div class="card-title">🩺 Espace Médecin – Dr. <span id="doctor-greeting"></span></div>
-        <div id="doctor-appointments" style="flex: 1; overflow-y: auto;"></div>
+        <div id="doctor-appointments"></div>
       </div>
     </div>
 
-    <div id="admin-dashboard" class="view">
-      <div class="card" style="background: #fafbfc; border-left: 5px solid var(--danger); height: 100%;">
-        <div class="card-title" style="color: var(--danger); margin-bottom: 8px;">🛡️ SIEM Audit Trail Log Tracker (Temps Réel)</div>
-        <p class="text-muted" style="margin-bottom: 12px; font-size: 0.85rem;">Console de traçabilité d'infrastructure réseau DoctoLine. Aucun défilement de page requis.</p>
+    <div id="admin-dashboard" style="display:none">
+      <div class="card" style="background: #fafbfc; border-left: 5px solid var(--danger);">
+        <div class="card-title" style="color: var(--danger);">🛡️ Centre de Supervision Sécurité & Traçabilité (SIEM Audit Logs)</div>
+        <p class="text-muted" style="margin-bottom: 20px;">Vue globale en temps réel sur l'infrastructure DoctoLine, la conformité des flux et la détection d'intrusions.</p>
         
         <div class="cyber-grid">
-          <div class="sub-panel">
-            <div class="panel-header-title">👥 Comptes Présents</div>
-            <div class="scrollable-content" id="admin-users-list"></div>
-          </div>
-          <div class="sub-panel">
-            <div class="panel-header-title">
-              <span>📋 Journal d'Audit</span>
-              <button class="btn btn-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="fetchAdminLogs()">🔄 Actualiser</button>
+          <div>
+            <div class="card" style="padding:15px;">
+              <h3 style="font-size:1rem; margin-bottom:10px; color: var(--primary-dark)">👥 Comptes Utilisateurs</h3>
+              <div id="admin-users-list" style="max-height: 400px; overflow-y:auto;"></div>
             </div>
-            <div class="scrollable-content" style="padding: 0;">
+          </div>
+
+          <div>
+            <div class="card" style="padding:15px;">
+              <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:10px;">
+                <h3 style="font-size:1rem; color: var(--primary-dark)">📋 Journal de Traçabilité des Activités (Logs d'Audit)</h3>
+                <button class="btn btn-outline btn-sm" onclick="fetchAdminLogs()">🔄 Rafraîchir</button>
+              </div>
               <div class="log-table-wrapper">
                 <table class="log-table">
                   <thead>
                     <tr>
                       <th>Horodatage</th>
-                      <th>Utilisateur</th>
+                      <th>Utilisateur / Email</th>
                       <th>Rôle</th>
                       <th>Action Cyber</th>
                       <th>Adresse IP</th>
                       <th>Statut</th>
-                      <th>Détails de l'événement</th>
+                      <th>Détails de l'évènement</th>
                     </tr>
                   </thead>
-                  <tbody id="admin-logs-tbody"></tbody>
+                  <tbody id="admin-logs-tbody">
+                    </tbody>
                 </table>
               </div>
             </div>
           </div>
         </div>
-
       </div>
     </div>
 
   </div>
 
   <div id="call-view">
-    <div class="call-header"><div class="call-title" id="call-title">Téléconsultation en cours</div><div id="call-timer">00:00</div></div>
+    <div class="call-header"><div class="call-title" id="call-title">Téléconsultation</div><div id="call-timer">00:00</div></div>
     <div class="sensor-panel">
       <div class="sensor-grid">
         <div class="sensor-item"><div>❤️ Fréquence Cardiaque</div><div class="sensor-value hr" id="s-hr">--</div><span>bpm</span></div>
@@ -254,29 +299,27 @@
         <div class="sensor-item"><div>💨 SpO2</div><div class="sensor-value spo2" id="s-spo2">--</div><span>%</span></div>
       </div>
     </div>
-    <div style="padding: 0 24px;"><button class="btn btn-accent btn-sm" onclick="generateFHIR()">📄 Générer ressource FHIR Observation</button></div>
+    <div style="padding: 10px 20px;"><button class="btn btn-accent btn-sm" onclick="generateFHIR()">📄 Générer & Sauvegarder Ressource FHIR</button></div>
     <div class="videos-container">
       <video id="remote-video" autoplay playsinline></video>
       <video id="local-video" autoplay muted playsinline></video>
     </div>
-    <div class="call-controls"><button class="ctrl-btn danger" onclick="endCall()">📵 Fin d'appel</button></div>
+    <div class="call-controls"><button class="ctrl-btn danger" onclick="endCall()">Ending 📵</button></div>
   </div>
 
   <div id="incoming-call-overlay">
     <div class="incoming-call-box">
-      <h3>Appel Télémédical Entrant 📹</h3><br>
+      <h3>Appel Entrant 📹</h3><br>
       <p id="incoming-caller-name"></p><br>
-      <div style="display: flex; gap: 10px; justify-content: center;">
-        <button class="btn btn-accent" onclick="acceptCall()">Accepter</button>
-        <button class="btn btn-danger" onclick="rejectCall()">Refuser</button>
-      </div>
+      <button class="btn btn-accent" onclick="acceptCall()">Accepter</button>
+      <button class="btn btn-danger" onclick="rejectCall()">Refuser</button>
     </div>
   </div>
 
 </div>
 
 <script>
-const STATE = { user: null, socket: null, peerConnection: null, localStream: null, currentCallId: null, peerSocketId: null, sensorInterval: null, callTimerInterval: null, callStartTime: null, selectedDoctorId: null, selectedDoctorName: null, lastFhirData: null, tempUserId: null };
+const STATE = { user: null, socket: null, peerConnection: null, localStream: null, currentCallId: null, peerSocketId: null, sensorInterval: null, callTimerInterval: null, callStartTime: null, selectedDoctorId: null, selectedDoctorName: null, lastFhirData: null };
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 window.addEventListener('load', () => {
@@ -288,7 +331,18 @@ window.addEventListener('load', () => {
 async function createDemoAccounts() {
   try {
     await fetch('/api/register', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:'Boris Patient', email:'patient@test.fr', password:'pass123', role:'patient' })});
+    await fetch('/api/register', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name:'Jean Medecin', email:'medecin@test.fr', password:'pass123', role:'medecin', specialty:'Médecine générale' })});
   } catch(e){}
+}
+
+function switchAuthTab(tab) {
+  document.getElementById('login-form').style.display = tab==='login' ? 'block' : 'none';
+  document.getElementById('register-form').style.display = tab==='register' ? 'block' : 'none';
+  document.getElementById('btn-tab-login').classList.toggle('active', tab==='login');
+  document.getElementById('btn-tab-reg').classList.toggle('active', tab==='register');
+}
+function toggleDoctorFields() {
+  document.getElementById('doctor-fields').style.display = document.getElementById('reg-role').value === 'medecin' ? 'block' : 'none';
 }
 
 async function loginUser() {
@@ -297,39 +351,30 @@ async function loginUser() {
   try {
     const res = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, password}) });
     const data = await res.json();
-    if (!res.ok) { document.getElementById('login-error').innerHTML = `<div class="alert alert-error">${data.message}</div>`; return; }
-    
-    if (data.requires2FA) {
-      STATE.tempUserId = data.userId;
-      document.getElementById('login-step-1').style.display = 'none';
-      document.getElementById('login-step-2').style.display = 'block';
-    } else {
-      STATE.user = data.user;
-      initApp();
-    }
+    if (!data.success) { document.getElementById('login-error').innerHTML = `<div class="alert alert-error">${data.message}</div>`; return; }
+    STATE.user = data.user;
+    initApp();
   } catch(e) { }
 }
 
-async function submitAdmin2FA() {
-  const answer1 = document.getElementById('2fa-answer-1').value;
-  const answer2 = document.getElementById('2fa-answer-2').value;
-  const answer3 = document.getElementById('2fa-answer-3').value;
-
+async function registerUser() {
+  const name = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const role = document.getElementById('reg-role').value;
+  const specialty = role==='medecin' ? document.getElementById('reg-specialty').value : undefined;
   try {
-    const res = await fetch('/api/login/verify-2fa', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: STATE.tempUserId, answer1, answer2, answer3 })
-    });
+    const res = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, email, password, role, specialty}) });
     const data = await res.json();
-    if (!res.ok) { alert(data.message || "Échec vérification"); return; }
-    
-    STATE.user = data.user;
-    initApp();
-  } catch(e) {}
+    if(!data.success) return;
+    switchAuthTab('login');
+  } catch(e){}
 }
 
-function logout() { if (STATE.socket) STATE.socket.disconnect(); location.reload(); }
+function logout() {
+  if (STATE.socket) STATE.socket.disconnect();
+  location.reload();
+}
 
 function initApp() {
   document.getElementById('auth-view').style.display = 'none';
@@ -344,16 +389,18 @@ function initApp() {
   initSocket();
 
   if (STATE.user.role === 'patient') {
-    document.getElementById('patient-dashboard').classList.add('active');
+    document.getElementById('patient-dashboard').style.display = 'block';
     document.getElementById('patient-greeting').textContent = STATE.user.name;
-    loadDoctors(); loadPatientAppointments();
+    loadDoctors();
   } else if (STATE.user.role === 'medecin') {
-    document.getElementById('doctor-dashboard').classList.add('active');
+    document.getElementById('doctor-dashboard').style.display = 'block';
     document.getElementById('doctor-greeting').textContent = STATE.user.name;
     loadDoctorAppointments();
   } else if (STATE.user.role === 'admin') {
-    document.getElementById('admin-dashboard').classList.add('active');
-    fetchAdminUsers(); fetchAdminLogs();
+    // Activation Dashboard Admin Cyber
+    document.getElementById('admin-dashboard').style.display = 'block';
+    fetchAdminUsers();
+    fetchAdminLogs();
   }
 }
 
@@ -369,8 +416,11 @@ function initSocket() {
   STATE.socket.on('webrtc:ready', (d) => { STATE.currentCallId = d.callId; STATE.peerSocketId = d.peerSocketId; });
   STATE.socket.on('call:ended', () => { closeCallView(); });
   
+  // Évènement de streaming Cyber-Log en temps réel (uniquement pour l'admin)
   STATE.socket.on('admin:new-log', (log) => {
-    if(STATE.user && STATE.user.role === 'admin') prependLogRow(log);
+    if(STATE.user && STATE.user.role === 'admin') {
+        prependLogRow(log);
+    }
   });
 
   STATE.socket.on('webrtc:offer', async (d) => {
@@ -386,23 +436,58 @@ function initSocket() {
   STATE.socket.on('sensor:update', (d) => { if(d.heartRate) document.getElementById('s-hr').textContent = d.heartRate; if(d.temperature) document.getElementById('s-temp').textContent = d.temperature; if(d.spo2) document.getElementById('s-spo2').textContent = d.spo2; });
 }
 
+// --- FONCTIONS ADMIN CYBER (NEW) ---
 async function fetchAdminUsers() {
-    const res = await fetch('/api/admin/users'); const users = await res.json();
-    document.getElementById('admin-users-list').innerHTML = users.map(u => `<div class="user-list-item"><div><strong>${u.name}</strong><br><small style="color:var(--text-muted);">${u.email}</small></div><span class="badge-role ${u.role}">${u.role.toUpperCase()}</span></div>`).join('');
+    const res = await fetch('/api/admin/users');
+    const users = await res.json();
+    const container = document.getElementById('admin-users-list');
+    container.innerHTML = users.map(u => `
+        <div class="user-list-item">
+            <div>
+                <strong>${u.name}</strong><br>
+                <small style="color:var(--text-muted);">${u.email}</small>
+            </div>
+            <span class="badge-role ${u.role}" style="border:1px solid; border-radius:10px; padding:2px 8px; font-size:0.75rem;">${u.role.toUpperCase()}</span>
+        </div>
+    `).join('');
 }
+
 async function fetchAdminLogs() {
-    const res = await fetch('/api/admin/logs'); const logs = await res.json();
-    const tbody = document.getElementById('admin-logs-tbody'); tbody.innerHTML = '';
+    const res = await fetch('/api/admin/logs');
+    const logs = await res.json();
+    const tbody = document.getElementById('admin-logs-tbody');
+    tbody.innerHTML = '';
     logs.forEach(log => appendLogRow(log));
 }
-function appendLogRow(log) { const tbody = document.getElementById('admin-logs-tbody'); tbody.appendChild(createLogRowElement(log)); }
-function prependLogRow(log) { const tbody = document.getElementById('admin-logs-tbody'); tbody.insertBefore(createLogRowElement(log), tbody.firstChild); }
+
+function appendLogRow(log) {
+    const tbody = document.getElementById('admin-logs-tbody');
+    const tr = createLogRowElement(log);
+    tbody.appendChild(tr);
+}
+
+function prependLogRow(log) {
+    const tbody = document.getElementById('admin-logs-tbody');
+    const tr = createLogRowElement(log);
+    tbody.insertBefore(tr, tbody.firstChild);
+}
+
 function createLogRowElement(log) {
-    const tr = document.createElement('tr'); const time = new Date(log.timestamp).toLocaleTimeString();
-    tr.innerHTML = `<td><b>${time}</b></td><td>${log.username}</td><td><span class="badge-role ${log.role}">${log.role}</span></td><td><code>${log.action}</code></td><td><small>${log.ip}</small></td><td><span class="badge-status ${log.status.toLowerCase()}">${log.status}</span></td><td style="color:#334155;">${log.details}</td>`;
+    const tr = document.createElement('tr');
+    const time = new Date(log.timestamp).toLocaleTimeString();
+    tr.innerHTML = `
+        <td><b>${time}</b></td>
+        <td>${log.username}<br><small style="color:var(--text-muted)">ID: ${log.userId}</small></td>
+        <td><span class="badge-role ${log.role}" style="font-size:0.7rem; padding:1px 5px;">${log.role}</span></td>
+        <td><code style="background:#f1f5f9; padding:2px 4px; border-radius:4px; font-weight:bold; color:var(--primary-dark);">${log.action}</code></td>
+        <td><small style="font-family:monospace;">${log.ip}</small></td>
+        <td><span class="badge-status ${log.status.toLowerCase()}">${log.status}</span></td>
+        <td style="color:#334155;">${log.details}</td>
+    `;
     return tr;
 }
 
+// --- LOGIQUE PATIENT / MEDECIN ---
 async function loadDoctors() {
   const res = await fetch('/api/doctors'); const docs = await res.json();
   document.getElementById('doctors-list').innerHTML = docs.map(d => `<div class="doctor-card"><div><b>Dr. ${d.name}</b> (${d.specialty})</div><button class="btn btn-primary btn-sm" onclick="selectDoctor('${d.id}','${d.name}')">Choisir</button></div>`).join('');
@@ -427,39 +512,48 @@ async function loadDoctorAppointments() {
   document.getElementById('doctor-appointments').innerHTML = appts.map(a => `<div class="appt-item"><div><b>${a.patientName}</b><br>${new Date(a.start).toLocaleString()}</div><button class="btn btn-accent btn-sm" onclick="startConsultationDoc('${a.id}','${a.patientId}','${a.patientName}')">Appeler</button></div>`).join('');
 }
 function startConsultationDoc(apptId, patId, patName) { STATE.socket.emit('call:request', { appointmentId: apptId, patientId: patId, patientName: patName, doctorId: STATE.user.doctorId, doctorName: STATE.user.name }); showCallView(); }
+
 function acceptCall() { const d = STATE.pendingCallData; document.getElementById('incoming-call-overlay').classList.remove('active'); STATE.socket.emit('call:accept', { callId: d.callId, doctorId: d.doctorId, doctorName: d.doctorName, patientSocketId: d.fromSocketId }); showCallView(); STATE.pendingCallData = null; }
 function rejectCall() { const d = STATE.pendingCallData; if (d) STATE.socket.emit('call:reject', { callId: d.callId }); document.getElementById('incoming-call-overlay').classList.remove('active'); STATE.pendingCallData = null; }
 
+// --- WEBRTC CORE ---
 async function startCall(isInitiator) {
   try { STATE.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); document.getElementById('local-video').srcObject = STATE.localStream; } catch(e){}
   STATE.peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   if (STATE.localStream) STATE.localStream.getTracks().forEach(t => STATE.peerConnection.addTrack(t, STATE.localStream));
   STATE.peerConnection.ontrack = (e) => { document.getElementById('remote-video').srcObject = e.streams[0]; };
   STATE.peerConnection.onicecandidate = (e) => { if (e.candidate) STATE.socket.emit('webrtc:ice-candidate', { targetSocketId: STATE.peerSocketId, candidate: e.candidate }); };
-  STATE.peerConnection.oniceconnectionstatechange = () => { if(STATE.peerConnection.iceConnectionState === 'connected') { startCallTimer(); startSensorSimulation(); } };
+  
+  STATE.peerConnection.oniceconnectionstatechange = () => {
+    if(STATE.peerConnection.iceConnectionState === 'connected') { startCallTimer(); startSensorSimulation(); }
+  };
   if (isInitiator) {
     const offer = await STATE.peerConnection.createOffer(); await STATE.peerConnection.setLocalDescription(offer);
     STATE.socket.emit('webrtc:offer', { targetSocketId: STATE.peerSocketId, offer });
   }
 }
+
 function startCallTimer() { STATE.callStartTime = Date.now(); STATE.callTimerInterval = setInterval(() => { const el = Math.floor((Date.now() - STATE.callStartTime)/1000); document.getElementById('call-timer').textContent = String(Math.floor(el/60)).padStart(2,'0') + ":" + String(el%60).padStart(2,'0'); }, 1000); }
 function startSensorSimulation() {
   let h = 75, t = 36.6, s = 98;
   STATE.sensorInterval = setInterval(() => {
     h = Math.round(h + (Math.random()-0.5)*3); t = Math.round((t + (Math.random()-0.5)*0.1)*10)/10; s = Math.round(s + (Math.random()-0.5)*1);
-    const data = { callId: STATE.currentCallId, heartRate: h, temperature: t, spo2: s }; STATE.lastFhirData = data;
+    const data = { callId: STATE.currentCallId, heartRate: h, temperature: t, spo2: s };
+    STATE.lastFhirData = data;
     if(STATE.socket) STATE.socket.emit('sensor:data', data);
     document.getElementById('s-hr').textContent = h; document.getElementById('s-temp').textContent = t; document.getElementById('s-spo2').textContent = s;
   }, 2000);
 }
+
 async function generateFHIR() {
   if(!STATE.lastFhirData) return;
   await fetch('/api/fhir/observation', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ patientId: STATE.user.id, patientName: STATE.user.name, ...STATE.lastFhirData }) });
-  alert('Ressource Observation FHIR transmise.');
+  alert('Ressource d\'observation FHIR transmise de manière sécurisée.');
 }
 function endCall() { if(STATE.currentCallId) STATE.socket.emit('call:end', { callId: STATE.currentCallId }); closeCallView(); }
 function showCallView() { document.getElementById('call-view').classList.add('active'); }
 function closeCallView() { document.getElementById('call-view').classList.remove('active'); clearInterval(STATE.sensorInterval); clearInterval(STATE.callTimerInterval); if(STATE.peerConnection) STATE.peerConnection.close(); if(STATE.localStream) STATE.localStream.getTracks().forEach(t=>t.stop()); }
+function showPatientTab(name) { document.getElementById('tab-doctors').classList.toggle('active', name==='doctors'); document.getElementById('tab-appointments').classList.toggle('active', name==='appointments'); if(name==='appointments') loadPatientAppointments(); }
 </script>
 </body>
 </html>
