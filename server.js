@@ -8,7 +8,7 @@ const os = require('os');
 const app = express();
 const PORT = 3443;
 
-// --- Chemins SSL (À adapter à votre VM) ---
+// --- Configuration des certificats SSL (vm) ---
 const SSL_KEY_PATH = '/home/iut/certs/192.168.23.129-key.pem';
 const SSL_CERT_PATH = '/home/iut/certs/192.168.23.129.pem';
 
@@ -24,7 +24,7 @@ const io = socketIo(server, { cors: { origin: "*" }, transports: ['websocket', '
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ---------- Base de données mémoire ----------
+// ---------- Base de données en mémoire ----------
 const users = [
     { id: "admin_root", name: "Administrateur", email: "admin@doctoline.fr", password: "invite", role: "admin" }
 ];
@@ -167,7 +167,7 @@ app.get('/api/history', (req, res) => {
     res.json(consultationHistory);
 });
 
-// ---------- SIGNALISATION WEBSOCKET (MULTI-NAVIGATEUR) ----------
+// ---------- SIGNALISATION SOCKET.IO (ONGLETS DISTINCTS) ----------
 const activeCalls = new Map();
 
 io.on('connection', (socket) => {
@@ -183,7 +183,6 @@ io.on('connection', (socket) => {
         const callId = `call_${appointmentId}`;
         activeCalls.set(callId, { callId, appointmentId, patientId, patientName, doctorId, doctorName, patientSocketId: socket.id, status: 'waiting' });
         
-        // Transmettre l'appel à la room du médecin
         io.to(`user-${doctorId}`).emit('call:incoming', { callId, patientId, patientName, doctorId, doctorName, fromSocketId: socket.id });
         socket.emit('call:requested', { callId });
     });
@@ -195,14 +194,12 @@ io.on('connection', (socket) => {
             call.status = 'accepted';
             call.doctorSocketId = socket.id;
             
-            // Informer le patient que le médecin a accepté
             io.to(call.patientSocketId).emit('call:accepted', { callId, doctorId, doctorName, doctorSocketId: socket.id });
-            // Informer le médecin que l'infrastructure WebRTC est prête à émettre l'Offer
             socket.emit('webrtc:ready', { callId, patientId: call.patientId, patientName: call.patientName, patientSocketId: call.patientSocketId });
         }
     });
 
-    // Relais des paquets de négociation SDP et ICE Candidates entre les deux navigateurs
+    // Relais de signalisation WebRTC pure entre les onglets
     socket.on('webrtc:offer', (data) => {
         io.to(data.targetSocketId).emit('webrtc:offer', { offer: data.offer, fromSocketId: socket.id });
     });
@@ -227,16 +224,6 @@ io.on('connection', (socket) => {
             if (call.patientSocketId) io.to(call.patientSocketId).emit('call:ended');
             if (call.doctorSocketId) io.to(call.doctorSocketId).emit('call:ended');
             activeCalls.delete(data.callId);
-        }
-    });
-    
-    socket.on('disconnect', () => {
-        for (let [callId, call] of activeCalls.entries()) {
-            if (call.patientSocketId === socket.id || call.doctorSocketId === socket.id) {
-                if (call.patientSocketId) io.to(call.patientSocketId).emit('call:ended');
-                if (call.doctorSocketId) io.to(call.doctorSocketId).emit('call:ended');
-                activeCalls.delete(callId);
-            }
         }
     });
 });
